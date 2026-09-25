@@ -20,14 +20,79 @@ import {
 import { sortNursesByShiftScheduleOrder } from '../utils/scheduler';
 
 export interface PartialSyncTargets {
-  matrixSchedule?: boolean;      // Matriks Jadwal Shif Perawat (Tab "Matriks HD - [Bulan]")
-  doctorDuties?: boolean;        // Jadwal Jaga Dokter HD (Tab "Jadwal Dokter - [Bulan]" & "Jadwal Dokter HD")
-  machineAssignments?: boolean;  // Detail Alokasi Mesin HD (Tab "Alokasi Mesin")
-  specialTasks?: boolean;        // Jadwal Tugas Khusus (Tab "Jadwal Tugas Khusus")
-  nursesMaster?: boolean;        // Master Data Perawat (Tab "Data Perawat")
-  machinesMaster?: boolean;      // Master Mesin HD & Bay (Tab "Data Mesin" & "Daftar Bay")
-  doctorsMaster?: boolean;       // Master Data Dokter (Tab "Data Dokter")
+  matrixSchedule?: boolean;      // Matrik Jadwal Perawat (Tab "Matrik Jadwal Perawat")
+  doctorDuties?: boolean;        // Matrik Jadwal Dokter (Tab "Matrik Jadwal Dokter")
+  machineAssignments?: boolean;  // Data alokasi mesin (Tab "Data alokasi mesin")
+  specialTasks?: boolean;        // Data tugas khusus (Tab "Data tugas khusus")
+  nursesMaster?: boolean;        // Master Perawat (Tab "Master Perawat")
+  machinesMaster?: boolean;      // Master Mesin (Tab "Master Mesin" urut Denah Ruangan)
+  doctorsMaster?: boolean;       // Master Dokter (Tab "Master Dokter")
   specialDutiesMaster?: boolean; // Master Opsi Tugas Khusus (Tab "Master Tugas Khusus")
+}
+
+/**
+ * Helper to determine room layout sort rank for HD machines according to denah ruangan.
+ * Sequence: Area A (A01..A12) -> Area B (B01..B09) -> Area C (C01..C08) -> Area D (D01..D03) -> Area E (E01..E02) -> Area F (F01..F02) -> Ruang Isolasi (ISO 01..ISO 04)
+ */
+export function getMachineDenahSortRank(code?: string, bay?: string): number {
+  const c = String(code || '').toUpperCase().trim();
+  const b = String(bay || '').toUpperCase().trim();
+
+  // 1. Area A (A01 - A12)
+  const mA = c.match(/^A-?(\d+)/);
+  if (mA) return 100 + parseInt(mA[1], 10);
+  if (b.includes('AREA A')) return 150;
+
+  // 2. Area B (B01 - B09)
+  const mB = c.match(/^B-?(\d+)/);
+  if (mB) return 200 + parseInt(mB[1], 10);
+  if (b.includes('AREA B')) return 250;
+
+  // 3. Area C (C01 - C08)
+  const mC = c.match(/^C-?(\d+)/);
+  if (mC) return 300 + parseInt(mC[1], 10);
+  if (b.includes('AREA C')) return 350;
+
+  // 4. Area D (D01 - D03)
+  const mD = c.match(/^D-?(\d+)/);
+  if (mD) return 400 + parseInt(mD[1], 10);
+  if (b.includes('AREA D')) return 450;
+
+  // 5. Area E (E01 - E02)
+  const mE = c.match(/^E-?(\d+)/);
+  if (mE) return 500 + parseInt(mE[1], 10);
+  if (b.includes('AREA E')) return 550;
+
+  // 6. Area F (F01 - F02)
+  const mF = c.match(/^F-?(\d+)/);
+  if (mF) return 600 + parseInt(mF[1], 10);
+  if (b.includes('AREA F')) return 650;
+
+  // 7. Ruang Isolasi (ISO 01 - ISO 04)
+  const mIso = c.match(/^ISO[-\s]?(\d+)/);
+  if (mIso) return 700 + parseInt(mIso[1], 10);
+  if (b.includes('ISOLASI')) return 750;
+
+  return 900;
+}
+
+/**
+ * Helper to determine Special Task priority rank:
+ * 1. PJ shif (PJ Shif / Katim)
+ * 2. BHP (Pengelolaan BHP / Logistik Bahan Habis Pakai)
+ * 3. Farmasi Logistik (Pengelolaan Farmasi & Logistik Obat)
+ * 4. Natrium RO (Pengawasan Mesin RO & Konsentrat Natrium/Acid)
+ * 5. CITO (Tim Siaga CITO / Emergency HD)
+ * 99. Lainnya
+ */
+export function getSpecialTaskCategoryRank(titleOrCategory?: string): number {
+  const t = String(titleOrCategory || '').toLowerCase().trim();
+  if (t.includes('pj') || t.includes('katim') || t.includes('ketua tim')) return 1;
+  if (t.includes('bhp') || t.includes('habis pakai')) return 2;
+  if (t.includes('farmasi') || t.includes('logistik') || t.includes('obat')) return 3;
+  if (t.includes('natrium') || t.includes('ro') || t.includes('water')) return 4;
+  if (t.includes('cito') || t.includes('emergency') || t.includes('darurat')) return 5;
+  return 99;
 }
 
 export const DEFAULT_PARTIAL_SYNC_TARGETS: Required<PartialSyncTargets> = {
@@ -858,7 +923,10 @@ export class GoogleSheetsService {
       }
       if (includeMachines) {
         payload.bays = bays || [];
-        payload.machines = machines.map((m) => ({
+        const sortedMachines = [...machines].sort(
+          (a, b) => getMachineDenahSortRank(a.code, a.bay) - getMachineDenahSortRank(b.code, b.bay)
+        );
+        payload.machines = sortedMachines.map((m) => ({
           id: m.id,
           code: m.code,
           name: m.name,
@@ -925,7 +993,18 @@ export class GoogleSheetsService {
         });
       }
       if (includeSpecialTasks) {
-        payload.dailySpecialTasks = dailySpecialTasks || [];
+        const sortedTasks = [...(dailySpecialTasks || [])].sort((a: any, b: any) => {
+          const dateComp = String(a.date || '').localeCompare(String(b.date || ''));
+          if (dateComp !== 0) return dateComp;
+          const shiftRankA = String(a.shift || '').toLowerCase().includes('siang') ? 2 : 1;
+          const shiftRankB = String(b.shift || '').toLowerCase().includes('siang') ? 2 : 1;
+          if (shiftRankA !== shiftRankB) return shiftRankA - shiftRankB;
+          const taskRankA = getSpecialTaskCategoryRank(a.categoryName || a.category || a.title);
+          const taskRankB = getSpecialTaskCategoryRank(b.categoryName || b.category || b.title);
+          if (taskRankA !== taskRankB) return taskRankA - taskRankB;
+          return String(a.nurseName || '').localeCompare(String(b.nurseName || ''));
+        });
+        payload.dailySpecialTasks = sortedTasks;
       }
       if (includeDoctors) {
         payload.doctors = (doctors || []).map((doc) => ({
