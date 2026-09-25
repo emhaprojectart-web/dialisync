@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Akun staf, perawat, dokter, dan admin unit Hemodialisa",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "nip": { "type": "string" },
+        "role": { "type": "string" },
+        "pin": { "type": "string" },
+        "phone": { "type": "string" },
+        "nickname": { "type": "string" },
+        "specialization": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "sortOrder": { "type": "number" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "ShiftSchedule": {
+      "title": "ShiftSchedule",
+      "description": "Jadwal shift dinas harian perawat dan dokter",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "date": { "type": "string" },
+        "shift": { "type": "string" },
+        "note": { "type": "string" },
+        "isCustomOverride": { "type": "boolean" }
+      },
+      "required": ["id", "employeeId", "date", "shift"]
+    },
+    "HDMachine": {
+      "title": "HDMachine",
+      "description": "Data dan status operasional mesin hemodialisa",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "zone": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "brand": { "type": "string" },
+        "status": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "code", "zone", "status"]
+    },
+    "MachineZoneConfig": {
+      "title": "MachineZoneConfig",
+      "description": "Konfigurasi status on/off area ruangan hemodialisa",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isEnabled": { "type": "boolean" }
+      },
+      "required": ["id", "name", "isEnabled"]
+    },
+    "MachineAssignment": {
+      "title": "MachineAssignment",
+      "description": "Plotting alokasi perawat pada mesin per tanggal dan shift",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "shift": { "type": "string" },
+        "machineId": { "type": "string" },
+        "nurseId": { "type": "string" },
+        "targetUF": { "type": "string" },
+        "dialyzerType": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "date", "shift", "machineId"]
+    },
+    "SpecialTask": {
+      "title": "SpecialTask",
+      "description": "Tugas khusus harian staf per shift",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "shift": { "type": "string" },
+        "assignedToId": { "type": "string" },
+        "category": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "date", "assignedToId", "category"]
+    }
+  },
+  "firestore": {
+    "collections": {
+      "employees": { "schema": "Employee", "description": "Koleksi akun staf" },
+      "schedules": { "schema": "ShiftSchedule", "description": "Koleksi jadwal shift" },
+      "machines": { "schema": "HDMachine", "description": "Koleksi mesin hemodialisa" },
+      "zones": { "schema": "MachineZoneConfig", "description": "Koleksi konfigurasi area" },
+      "machineAssignments": { "schema": "MachineAssignment", "description": "Koleksi plotting mesin" },
+      "specialTasks": { "schema": "SpecialTask", "description": "Koleksi tugas khusus" },
+      "systemState": { "schema": "object", "description": "Koleksi status sinkronisasi sistem" }
+    }
+  }
+}

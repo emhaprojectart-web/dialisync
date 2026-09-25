@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Master catch-all: Mengizinkan staf membaca dan menulis data operasional unit Hemodialisa
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    // Koleksi data operasional RS Happy Land Unit Hemodialisa
+    match /employees/{employeeId} {
+      allow read, write: if true;
+    }
+
+    match /schedules/{scheduleId} {
+      allow read, write: if true;
+    }
+
+    match /machines/{machineId} {
+      allow read, write: if true;
+    }
+
+    match /zones/{zoneId} {
+      allow read, write: if true;
+    }
+
+    match /machineAssignments/{assignmentId} {
+      allow read, write: if true;
+    }
+
+    match /specialTasks/{taskId} {
+      allow read, write: if true;
+    }
+
+    match /systemState/{stateId} {
+      allow read, write: if true;
+    }
+
+    match /systemMeta/{metaId} {
+      allow read, write: if true;
+    }
+  }
+}

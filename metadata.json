@@ -1,0 +1,8 @@
+{
+  "name": "Dialisync Done",
+  "description": "Sistem manajemen jadwal shift kerja perawat dan dokter hemodialisa, tugas khusus, dan pembagian mesin hemodialisa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

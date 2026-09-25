@@ -1,0 +1,21 @@
+{
+  "name": "Sistem Shift & Mesin Hemodialisa HLMC",
+  "short_name": "Dialisis HLMC",
+  "description": "Sistem manajemen jadwal shift kerja perawat dan dokter hemodialisa serta pembagian mesin HD",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#042f2e",
+  "theme_color": "#042f2e",
+  "icons": [
+    {
+      "src": "/logo_rshl.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo_rshl.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

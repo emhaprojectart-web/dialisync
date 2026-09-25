@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* Styles for Direct Printing */
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm 8mm 10mm 8mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide navigation, buttons, controls, search inputs and interactive panels */
+  nav,
+  header,
+  button,
+  input,
+  select,
+  .no-print,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* Expand schedule tables to full width without scrollbars */
+  .overflow-x-auto {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Page break rules */
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Reset sticky positioning in print so columns & headers flow naturally across pages */
+  th, td {
+    position: static !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+}
