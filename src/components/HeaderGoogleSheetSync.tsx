@@ -1453,7 +1453,7 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         nursesMaster: true,
                         machinesMaster: true,
                         doctorsMaster: true,
-                        specialDutiesMaster: true,
+                        specialDutiesMaster: false,
                       })
                     }
                     className="px-2.5 py-1 text-[11px] font-bold rounded-lg transition border bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 cursor-pointer disabled:opacity-40"
@@ -1567,7 +1567,7 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         nursesMaster: true,
                         machinesMaster: true,
                         doctorsMaster: true,
-                        specialDutiesMaster: true,
+                        specialDutiesMaster: false,
                       })
                     }
                     className="px-2.5 py-1 text-[11px] font-bold rounded-lg transition border bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 cursor-pointer disabled:opacity-40"
@@ -1605,7 +1605,7 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                     <span>Jadwal Operasional Bulanan ({displayMonthName})</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Item 1: Matriks Jadwal Perawat */}
+                    {/* Item 1: Matrik Jadwal Perawat */}
                     <div
                       onClick={() =>
                         !isPartialSending &&
@@ -1628,14 +1628,14 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Matriks Jadwal Perawat
+                              Matrik Jadwal Perawat
                             </span>
                             <span className="text-[9px] bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Matriks HD - {displayMonthName}
+                              Matrik Jadwal Perawat
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                            Matriks kalender .xlsx dinas harian (P, S, 2S, L, C, SK) per perawat lengkap dengan baris rekap harian.
+                            Matriks kalender dinas harian (P, S, 2S, L, C, SK, I) per perawat lengkap dengan baris rekap harian & pewarnaan otomatis.
                           </p>
                         </div>
                       </div>
@@ -1645,7 +1645,7 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                       </div>
                     </div>
 
-                    {/* Item 2: Jadwal Dinas Dokter HD */}
+                    {/* Item 2: Matrik Jadwal Dokter */}
                     <div
                       onClick={() =>
                         !isPartialSending &&
@@ -1668,10 +1668,10 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Jadwal Dinas Dokter HD
+                              Matrik Jadwal Dokter
                             </span>
                             <span className="text-[9px] bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Jadwal Dokter - {displayMonthName}
+                              Matrik Jadwal Dokter
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
@@ -1685,7 +1685,7 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                       </div>
                     </div>
 
-                    {/* Item 3: Alokasi Mesin Hemodialisa */}
+                    {/* Item 3: Data alokasi mesin */}
                     <div
                       onClick={() =>
                         !isPartialSending &&
@@ -1708,24 +1708,24 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Detail Alokasi Mesin HD
+                              Data Alokasi Mesin
                             </span>
                             <span className="text-[9px] bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Alokasi Mesin
+                              Data alokasi mesin
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                            Detail pemetaan kode mesin dialisis per perawat per tanggal & shift jaga (pagi & siang).
+                            Catatan log alokasi mesin shif pagi & siang urut sesuai tanggal, peran, dan nomor mesin.
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400">
                         <span>{machines.length} Unit Mesin Aktif</span>
-                        <span className="font-semibold text-sky-600 dark:text-sky-400">Arsip Terpisah</span>
+                        <span className="font-semibold text-sky-600 dark:text-sky-400">Urut Tanggal & Shift</span>
                       </div>
                     </div>
 
-                    {/* Item 4: Jadwal Rekap Tugas Khusus */}
+                    {/* Item 4: Data tugas khusus */}
                     <div
                       onClick={() =>
                         !isPartialSending &&
@@ -1748,20 +1748,20 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Jadwal Tugas Khusus
+                              Data Tugas Khusus
                             </span>
                             <span className="text-[9px] bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Jadwal Tugas Khusus
+                              Data tugas khusus
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                            Penugasan tugas khusus perawat (PJ Shif, BHP, Farmasi Logistik, Natrium RO, Cito, dll.) urut kronologis.
+                            Penugasan tugas khusus kedua shif: Shif Pagi (PJ shif, BHP, Farmasi Logistik, Natrium RO, CITO) lalu Shif Siang (PJ shif, BHP, Farmasi Logistik, Natrium RO, CITO).
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400">
                         <span>{specialTasks.length} Tugas Tercatat</span>
-                        <span className="font-semibold text-amber-600 dark:text-amber-400">Urut Kronologis</span>
+                        <span className="font-semibold text-amber-600 dark:text-amber-400">Urut Tanggal & Prioritas</span>
                       </div>
                     </div>
                   </div>
@@ -1773,8 +1773,8 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                     <Users className="w-3.5 h-3.5 text-teal-500" />
                     <span>Master Data & Referensi Rumah Sakit</span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Item 5: Master Data Perawat */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Item 5: Master Perawat */}
                     <div
                       onClick={() =>
                         !isPartialSending &&
@@ -1797,14 +1797,14 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Master Data Perawat
+                              Master Perawat
                             </span>
                             <span className="text-[9px] bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Data Perawat
+                              Master Perawat
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                            Daftar profil perawat: ID, Nama, NIP, no WhatsApp, peran jabatan (Karu, PJ, Pelaksana), dan status.
+                            Nomor ID perawat, Nama Perawat, NIP, Nomor WhatsApp, Peran/Jabatan, dan Status Aktif.
                           </p>
                         </div>
                       </div>
@@ -1814,7 +1814,7 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                       </div>
                     </div>
 
-                    {/* Item 6: Master Mesin HD & Bay */}
+                    {/* Item 6: Master Mesin (Urut Denah Ruangan) */}
                     <div
                       onClick={() =>
                         !isPartialSending &&
@@ -1837,24 +1837,24 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Master Mesin HD & Bay
+                              Master Mesin
                             </span>
                             <span className="text-[9px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Data Mesin & Bay
+                              Master Mesin
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                            Master inventaris mesin HD, kode unit, model brand, penempatan bay/ruangan & status kesiapan unit.
+                            Daftar nama dan data area urut sesuai dengan urutan pada denah ruangan (Area A s.d. F & Isolasi).
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400">
                         <span>{machines.length} Mesin Dialisis</span>
-                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Inventaris HD</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">Urut Denah Ruangan</span>
                       </div>
                     </div>
 
-                    {/* Item 7: Master Data Dokter HD */}
+                    {/* Item 7: Master Dokter */}
                     <div
                       onClick={() =>
                         !isPartialSending &&
@@ -1877,60 +1877,20 @@ export const HeaderGoogleSheetSync: React.FC<HeaderGoogleSheetSyncProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Master Data Dokter HD
+                              Master Dokter
                             </span>
                             <span className="text-[9px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Data Dokter
+                              Master Dokter
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                            Master profil dokter ruangan dan DPJP Hemodialisa (SIP, nomor telepon, peran & spesialisasi).
+                            Nomor ID Dokter, Nama Dokter, NIP, Nomor WhatsApp, Peran/Jabatan (DPJP / Dokter Ruangan), Status Aktif.
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400">
                         <span>{employees.filter((e) => e.role === 'dokter').length} Dokter Jaga</span>
                         <span className="font-semibold text-indigo-600 dark:text-indigo-400">DPJP & Dokter HD</span>
-                      </div>
-                    </div>
-
-                    {/* Item 8: Master Definisi Tugas Khusus */}
-                    <div
-                      onClick={() =>
-                        !isPartialSending &&
-                        setPartialTargets((p) => ({ ...p, specialDutiesMaster: !p.specialDutiesMaster }))
-                      }
-                      className={`p-3 rounded-2xl border transition cursor-pointer flex flex-col justify-between ${
-                        partialTargets.specialDutiesMaster
-                          ? 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 shadow-xs'
-                          : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-750'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <div className="mt-0.5">
-                          {partialTargets.specialDutiesMaster ? (
-                            <CheckSquare className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                          ) : (
-                            <Square className="w-4 h-4 text-slate-400" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-extrabold text-slate-900 dark:text-white text-xs">
-                              Master Tugas Khusus
-                            </span>
-                            <span className="text-[9px] bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 font-bold px-1.5 py-0.2 rounded font-mono">
-                              Master Tugas Khusus
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                            Definisi daftar tugas khusus, kode singkatan, warna tema dot, dan uraian tugas pokok perawat.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400">
-                        <span>{DEFAULT_SPECIAL_DUTY_OPTIONS.length} Opsi Terdaftar</span>
-                        <span className="font-semibold text-rose-600 dark:text-rose-400">Konfigurasi Warna</span>
                       </div>
                     </div>
                   </div>

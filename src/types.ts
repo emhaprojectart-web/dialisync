@@ -296,6 +296,7 @@ export interface SpecialTask {
   title: string;
   description: string;
   assignedToId: string;
+  employeeId?: string; // Alias for assignedToId
   assignedByName: string;
   date: string; // YYYY-MM-DD
   shift: 'pagi' | 'siang';

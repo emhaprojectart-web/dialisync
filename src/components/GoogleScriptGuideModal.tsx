@@ -107,31 +107,31 @@ export const GoogleScriptGuideModal: React.FC<GoogleScriptGuideModalProps> = ({
           <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 space-y-2">
             <span className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Kelebihan Format Matriks .xlsx (1 Kali Input Sekaligus):
+              Struktur Baku 7 Sheet di Google Sheets (Urut Sesuai Standar):
             </span>
-            <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
+            <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300 pl-1">
               <li>
-                <b>Tab Baru Otomatis per Bulan (Arsip Permanen):</b> Spreadsheet otomatis membuat tab baru (contoh: <b>"Matriks HD - September 2026"</b>, <b>"Matriks HD - Oktober 2026"</b>) tanpa menghapus atau menimpa matriks bulan lalu. Semua riwayat jadwal bulanan tersimpan utuh!
+                <b>Master Mesin:</b> Berisi daftar nama dan data area yang urut sesuai dengan urutan pada denah ruangan (Area A s.d. Area F, lalu Ruang Isolasi).
               </li>
               <li>
-                <b>Baris Rekap Harian di Bawah Matriks:</b> Dilengkapi baris rekap harian untuk Sif Pagi, Sif Siang, PJ Sif/Katim, dan Total Dinas seperti pada tampilan sistem web.
+                <b>Master Perawat:</b> Berisi nomor ID perawat, Nama Perawat, NIP, Nomor WhatsApp, Peran/Jabatan (Karu, Katim, Pelaksana), dan Status Aktif.
               </li>
               <li>
-                <b>Tab Data & Jadwal Dokter HD:</b> Otomatis membuat tab <b>"Data Dokter"</b> dan <b>"Jadwal Dokter HD"</b> (Sif Pagi & Siang) sehingga dokter jaga dan perawat terorganisasi dalam 1 dokumen.
+                <b>Master Dokter:</b> Berisi nomor ID Dokter, Nama Dokter, NIP, Nomor WhatsApp, Peran/Jabatan (DPJP / Dokter Ruangan), dan Status Aktif.
               </li>
               <li>
-                <b>Input 1 Kali Langsung Jadi:</b> Anda cukup mengetik kode shift (<code className="font-mono bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 px-1 py-0.2 rounded font-bold">P</code> = Pagi, <code className="font-mono bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 px-1 py-0.2 rounded font-bold">S</code> = Siang, <code className="font-mono bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1 py-0.2 rounded">L</code> = Libur, <code className="font-mono bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 px-1 py-0.2 rounded font-bold">C</code> = Cuti, <code className="font-mono bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 px-1 py-0.2 rounded font-bold">SK</code> = Sakit) di spreadsheet. Warna sel otomatis berubah rapi!
+                <b>Data alokasi mesin:</b> Berisi catatan/log alokasi mesin HD yang sudah di-inputkan untuk shif pagi dan siang urut sesuai tanggal.
               </li>
               <li>
-                <b>Tab Jadwal Tugas Khusus & Alokasi Mesin Terpisah:</b> Tab <b>"Jadwal Tugas Khusus"</b> kini otomatis terurut kronologis sesuai tanggal (1 s/d akhir bulan) dengan Shif Pagi didahulukan lalu Shif Siang. Data detail alokasi mesin HD disimpan secara terpisah pada sheet <b>"Alokasi Mesin"</b> agar dokumen rapi dan mudah dianalisis.
+                <b>Data tugas khusus:</b> Berisi data Tugas Khusus yang sudah di-inputkan untuk kedua shif dengan urutan sesuai tanggal dan shif pagi (PJ shif, BHP, Farmasi Logistik, Natrium RO lalu CITO) dilanjutkan shif siang (PJ shif, BHP, Farmasi Logistik, Natrium RO lalu CITO).
               </li>
               <li>
-                <b>Auto-Alokasi Mesin Cerdas:</b> Saat Anda klik <b>"Tarik Data dari Google Sheets"</b>, aplikasi secara cerdas membaca matriks dan otomatis mengalokasikan mesin HD secara adil dan merata.
+                <b>Matrik Jadwal Perawat:</b> Matriks kalender bulanan 1..31 hari (P, S, 2S, L, C, SK, I) dengan pewarnaan otomatis dan rekap beban harian.
               </li>
               <li>
-                <b>Bebas Kuota Firebase:</b> Berjalan 100% lancar kapan pun di perangkat mana pun tanpa batas kuota harian.
+                <b>Matrik Jadwal Dokter:</b> Matrik jadwal dinas dokter Sif Pagi & Siang 1..31 hari dengan highlight hari Minggu dan ringkasan beban jaga bulanan.
               </li>
-            </ul>
+            </ol>
           </div>
 
           <div className="space-y-1.5">

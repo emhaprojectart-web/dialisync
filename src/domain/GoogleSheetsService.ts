@@ -1052,7 +1052,6 @@ export class GoogleSheetsService {
           if (includeNurses) syncedParts.push(`Data Perawat (${sortedNurses.length})`);
           if (includeMachines) syncedParts.push(`Data Mesin HD (${machines.length})`);
           if (includeDoctors) syncedParts.push(`Data Dokter (${doctors?.length || 0})`);
-          if (includeSpecialDuties) syncedParts.push(`Master Tugas Khusus (${dutyOpts.length})`);
 
           return {
             isSuccess: true,
@@ -1063,21 +1062,18 @@ export class GoogleSheetsService {
             doctorsCount: includeDoctors ? (doctors?.length || 0) : undefined,
             doctorDutiesCount: includeDoctorDuties ? dutiesList.length : undefined,
             baysCount: includeMachines ? (bays?.length || 0) : undefined,
-            specialDutiesCount: includeSpecialDuties ? dutyOpts.length : undefined,
           };
         } else {
           const docMsg = doctors && doctors.length > 0 ? ` & ${doctors.length} dokter jaga` : '';
-          const bayMsg = bays && bays.length > 0 ? `, ${bays.length} bay` : '';
           return {
             isSuccess: true,
-            message: `Berhasil mengekspor 2-arah ke Google Sheets: tab "Matriks HD - ${matrixData.formattedMonthTitle}" (${assignments.length} jadwal perawat${docMsg}${bayMsg}, ${dutyOpts.length} tugas khusus).`,
+            message: `Berhasil mengekspor 2-arah ke Google Sheets: tab "Matriks HD - ${matrixData.formattedMonthTitle}" (${assignments.length} jadwal perawat${docMsg}).`,
             nursesCount: nurses.length,
             machinesCount: machines.length,
             assignmentsCount: assignments.length,
             doctorsCount: doctors?.length || 0,
             doctorDutiesCount: dutiesList.length,
             baysCount: bays?.length || 0,
-            specialDutiesCount: dutyOpts.length,
           };
         }
       } else {
@@ -1586,20 +1582,77 @@ function doPost(e) {
       return 4;
     }
 
+    // Helper urutan denah ruangan untuk Master Mesin
+    function getMachineDenahSortRank(code, bay) {
+      var c = String(code || '').toUpperCase().trim();
+      var b = String(bay || '').toUpperCase().trim();
+      var mA = c.match(/^A-?(\d+)/);
+      if (mA) return 100 + parseInt(mA[1], 10);
+      if (b.indexOf('AREA A') > -1) return 150;
+      var mB = c.match(/^B-?(\d+)/);
+      if (mB) return 200 + parseInt(mB[1], 10);
+      if (b.indexOf('AREA B') > -1) return 250;
+      var mC = c.match(/^C-?(\d+)/);
+      if (mC) return 300 + parseInt(mC[1], 10);
+      if (b.indexOf('AREA C') > -1) return 350;
+      var mD = c.match(/^D-?(\d+)/);
+      if (mD) return 400 + parseInt(mD[1], 10);
+      if (b.indexOf('AREA D') > -1) return 450;
+      var mE = c.match(/^E-?(\d+)/);
+      if (mE) return 500 + parseInt(mE[1], 10);
+      if (b.indexOf('AREA E') > -1) return 550;
+      var mF = c.match(/^F-?(\d+)/);
+      if (mF) return 600 + parseInt(mF[1], 10);
+      if (b.indexOf('AREA F') > -1) return 650;
+      var mIso = c.match(/^ISO[-\s]?(\d+)/);
+      if (mIso) return 700 + parseInt(mIso[1], 10);
+      if (b.indexOf('ISOLASI') > -1) return 750;
+      return 900;
+    }
+
+    // Helper urutan tugas khusus: PJ shif (1), BHP (2), Farmasi Logistik (3), Natrium RO (4), CITO (5), lainnya (99)
+    function getSpecialTaskRank(taskName) {
+      var t = String(taskName || '').toLowerCase().trim();
+      if (t.indexOf('pj') > -1 || t.indexOf('katim') > -1 || t.indexOf('ketua tim') > -1) return 1;
+      if (t.indexOf('bhp') > -1 || t.indexOf('habis pakai') > -1) return 2;
+      if (t.indexOf('farmasi') > -1 || t.indexOf('logistik') > -1 || t.indexOf('obat') > -1) return 3;
+      if (t.indexOf('natrium') > -1 || t.indexOf('ro') > -1 || t.indexOf('water') > -1) return 4;
+      if (t.indexOf('cito') > -1 || t.indexOf('emergency') > -1 || t.indexOf('darurat') > -1) return 5;
+      return 99;
+    }
+
+    // Helper ambil atau migrasi nama sheet lama ke nama sheet baru
+    function getOrCreateMigratedSheet(newName, oldAliases) {
+      var s = ss.getSheetByName(newName);
+      if (s) return s;
+      if (oldAliases && oldAliases.length) {
+        for (var a = 0; a < oldAliases.length; a++) {
+          var oldSheet = ss.getSheetByName(oldAliases[a]);
+          if (oldSheet) {
+            try {
+              oldSheet.setName(newName);
+              return oldSheet;
+            } catch(e) {}
+          }
+        }
+      }
+      return ss.insertSheet(newName);
+    }
+
     // -------------------------------------------------------------
     // 0. Aksi Khusus: Hapus Semua Riwayat Tugas Khusus
     // -------------------------------------------------------------
     if (data.action === 'CLEAR_SPECIAL_TASKS') {
-      var dutySchedSheetToClear = ss.getSheetByName("Jadwal Tugas Khusus");
+      var dutySchedSheetToClear = getOrCreateMigratedSheet("Data tugas khusus", ["Jadwal Tugas Khusus", "Data Tugas Khusus"]);
       if (dutySchedSheetToClear) {
         dutySchedSheetToClear.clear();
-        var dHeadersClean = [["Tanggal", "Hari", "Sif", "Kode Sif", "Nama Perawat", "Peran", "Tugas Khusus", "Catatan"]];
-        dutySchedSheetToClear.getRange(1, 1, 1, 8).setValues(dHeadersClean);
-        dutySchedSheetToClear.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#0F766E").setFontColor("#FFFFFF");
+        var dHeadersClean = [["No", "Tanggal", "Hari", "Sif", "Kode Sif", "Tugas Khusus", "Nama Perawat", "Peran / Jabatan", "Keterangan / Rincian Tugas"]];
+        dutySchedSheetToClear.getRange(1, 1, 1, 9).setValues(dHeadersClean);
+        dutySchedSheetToClear.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#7C3AED").setFontColor("#FFFFFF");
       }
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "Berhasil menghapus seluruh riwayat tugas khusus di tab Jadwal Tugas Khusus Google Sheets!"
+        message: "Berhasil menghapus seluruh riwayat tugas khusus di tab Data tugas khusus Google Sheets!"
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1607,8 +1660,8 @@ function doPost(e) {
     // 0b. Aksi Khusus: Sinkronisasi Langsung Tugas Khusus
     // -------------------------------------------------------------
     if (data.action === 'SYNC_SPECIAL_TASKS') {
-      var dutySchedSheetSync = ss.getSheetByName("Jadwal Tugas Khusus") || ss.insertSheet("Jadwal Tugas Khusus");
-      var dHeadersSync = [["Tanggal", "Hari", "Sif", "Kode Sif", "Nama Perawat", "Peran", "Tugas Khusus", "Catatan"]];
+      var dutySchedSheetSync = getOrCreateMigratedSheet("Data tugas khusus", ["Jadwal Tugas Khusus", "Data Tugas Khusus"]);
+      var dHeadersSync = [["No", "Tanggal", "Hari", "Sif", "Kode Sif", "Tugas Khusus", "Nama Perawat", "Peran / Jabatan", "Keterangan / Rincian Tugas"]];
       var targetMonthSync = data.month || "";
       var dayNamesListSync = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -1616,20 +1669,26 @@ function doPost(e) {
       if (dutySchedSheetSync.getLastRow() > 1) {
         var numOldColsSync = dutySchedSheetSync.getLastColumn();
         var oldDutyValsSync = dutySchedSheetSync.getRange(2, 1, dutySchedSheetSync.getLastRow() - 1, numOldColsSync).getValues();
+        var hasNoCol = String(dutySchedSheetSync.getRange(1, 1).getValue() || "").trim().toLowerCase() === "no";
         for (var os = 0; os < oldDutyValsSync.length; os++) {
           var oRow = oldDutyValsSync[os];
-          var dRowDate = parseDateToYMD(oRow[0]);
+          var dRowDate = parseDateToYMD(hasNoCol ? oRow[1] : oRow[0]);
           if (!targetMonthSync || dRowDate.indexOf(targetMonthSync) !== 0) {
-            existingDutyRowsSync.push([
-              oRow[0] || "",
-              oRow[1] || "",
-              oRow[2] || "",
-              oRow[3] || "",
-              oRow[4] || "",
-              oRow[5] || "",
-              oRow[6] || "",
-              numOldColsSync >= 9 ? (oRow[8] || oRow[7] || "") : (oRow[7] || "")
-            ]);
+            if (hasNoCol) {
+              existingDutyRowsSync.push(oRow.slice(0, 9));
+            } else {
+              existingDutyRowsSync.push([
+                0,
+                oRow[0] || "",
+                oRow[1] || "",
+                oRow[2] || "",
+                oRow[3] || "",
+                oRow[6] || "",
+                oRow[4] || "",
+                oRow[5] || "",
+                oRow[7] || ""
+              ]);
+            }
           }
         }
       }
@@ -1651,13 +1710,14 @@ function doPost(e) {
           var tsNotes = tsItem.description || tsItem.title || tsItem.notes || "";
           
           newDutySchedRowsSync.push([
+            0,
             tsDate,
             tsDay,
             sLabelSync,
             sCodeSync,
+            tsCategory,
             tsNurse,
             tsRole,
-            tsCategory,
             tsNotes
           ]);
         }
@@ -1665,46 +1725,53 @@ function doPost(e) {
 
       var combinedDutyRowsSync = existingDutyRowsSync.concat(newDutySchedRowsSync);
       combinedDutyRowsSync.sort(function(a, b) {
-        var dateA = String(a[0] || "");
-        var dateB = String(b[0] || "");
+        var dateA = String(a[1] || "");
+        var dateB = String(b[1] || "");
         if (dateA !== dateB) {
           return dateA.localeCompare(dateB);
         }
-        var rankA = getShiftSortRank(a[2], a[3]);
-        var rankB = getShiftSortRank(b[2], b[3]);
+        var rankA = getShiftSortRank(a[3], a[4]);
+        var rankB = getShiftSortRank(b[3], b[4]);
         if (rankA !== rankB) {
           return rankA - rankB;
         }
-        var nurseA = String(a[4] || "").toLowerCase();
-        var nurseB = String(b[4] || "").toLowerCase();
-        return nurseA.localeCompare(nurseB);
+        var taskRankA = getSpecialTaskRank(a[5]);
+        var taskRankB = getSpecialTaskRank(b[5]);
+        if (taskRankA !== taskRankB) {
+          return taskRankA - taskRankB;
+        }
+        return String(a[6] || "").localeCompare(String(b[6] || ""));
       });
 
+      for (var si = 0; si < combinedDutyRowsSync.length; si++) {
+        combinedDutyRowsSync[si][0] = si + 1;
+      }
+
       dutySchedSheetSync.clear();
-      dutySchedSheetSync.getRange(1, 1, 1, 8)
+      dutySchedSheetSync.getRange(1, 1, 1, 9)
         .setValues(dHeadersSync)
-        .setBackground("#0F766E")
+        .setBackground("#7C3AED")
         .setFontColor("#FFFFFF")
         .setFontWeight("bold");
 
       dutySchedSheetSync.setFrozenRows(1);
 
       if (combinedDutyRowsSync.length > 0) {
-        dutySchedSheetSync.getRange(2, 1, combinedDutyRowsSync.length, 8).setValues(combinedDutyRowsSync);
-        dutySchedSheetSync.getRange(2, 1, combinedDutyRowsSync.length, 4).setHorizontalAlignment("center");
-        dutySchedSheetSync.autoResizeColumns(1, 8);
+        dutySchedSheetSync.getRange(2, 1, combinedDutyRowsSync.length, 9).setValues(combinedDutyRowsSync);
+        dutySchedSheetSync.getRange(2, 1, combinedDutyRowsSync.length, 5).setHorizontalAlignment("center");
+        dutySchedSheetSync.autoResizeColumns(1, 9);
       }
 
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "Berhasil menyinkronkan " + newDutySchedRowsSync.length + " tugas khusus ke tab Jadwal Tugas Khusus di Google Sheets!",
+        message: "Berhasil menyinkronkan " + newDutySchedRowsSync.length + " tugas khusus ke tab Data tugas khusus di Google Sheets!",
         tasksCount: newDutySchedRowsSync.length,
         timestamp: timestamp
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // -------------------------------------------------------------
-    // 1. Matriks Jadwal HD (Persis Template .xlsx Kalender)
+    // 6. Matrik Jadwal Perawat (Persis Template .xlsx Kalender)
     // TAB BARU PER BULAN OTOMATIS: Tab bulan sebelumnya TIDAK DIHAPUS
     // -------------------------------------------------------------
     var matrixData = data.scheduleMatrix;
@@ -1722,18 +1789,17 @@ function doPost(e) {
     }
 
     if (matrixData && matrixData.headers && matrixData.rows) {
-      var sheetName = monthTitle ? ("Matriks HD - " + monthTitle) : "Matriks Jadwal HD";
+      var sheetName = monthTitle ? ("Matrik Jadwal Perawat - " + monthTitle) : "Matrik Jadwal Perawat";
 
-      // CARI ATAU BUAT TAB BARU (Tab bulan lalu tetap aman dan tidak terhapus!)
-      var matrixSheet = ss.getSheetByName(sheetName);
-      if (!matrixSheet) {
-        // Buat tab baru di urutan paling depan (indeks 0)
-        matrixSheet = ss.insertSheet(sheetName, 0);
-        try { matrixSheet.setTabColor("#0061A4"); } catch(err) {}
-      } else {
-        // Jika tab untuk bulan yang sama sudah pernah dikirim, bersihkan HANYA tab bulan ini untuk diperbarui
-        matrixSheet.clear();
-      }
+      // CARI ATAU BUAT TAB (Dukungan migrasi nama lama)
+      var matrixSheet = getOrCreateMigratedSheet(sheetName, [
+        "Matrik Jadwal Perawat",
+        "Matriks HD - " + monthTitle,
+        "Matriks Jadwal HD",
+        "Matriks HD"
+      ]);
+      matrixSheet.clear();
+      try { matrixSheet.setTabColor("#1E40AF"); } catch(err) {}
 
       var mHeaders = [matrixData.headers];
       var mRows = matrixData.rows;
@@ -1888,14 +1954,14 @@ function doPost(e) {
     }
 
     // -------------------------------------------------------------
-    // 2. Simpan Data Perawat (Sheet: 'Data Perawat')
+    // 2. Simpan Master Perawat (Sheet: 'Master Perawat')
     // -------------------------------------------------------------
     if (data.nurses && Array.isArray(data.nurses)) {
-      var nurseSheet = ss.getSheetByName("Data Perawat") || ss.insertSheet("Data Perawat");
+      var nurseSheet = getOrCreateMigratedSheet("Master Perawat", ["Data Perawat"]);
       nurseSheet.clear();
       
-      var nurseHeaders = [["ID", "Nama Perawat", "NIP", "No WhatsApp", "Peran", "Status Aktif", "Tugas Khusus", "Hari Libur Tetap"]];
-      nurseSheet.getRange(1, 1, 1, 8)
+      var nurseHeaders = [["ID Perawat", "Nama Perawat", "NIP", "Nomor WhatsApp", "Peran / Jabatan", "Status Aktif"]];
+      nurseSheet.getRange(1, 1, 1, 6)
         .setValues(nurseHeaders)
         .setBackground("#0D9488")
         .setFontColor("#FFFFFF")
@@ -1912,28 +1978,27 @@ function doPost(e) {
           itemN.id || (n + 1),
           itemN.name || "",
           itemN.nip || "-",
-          itemN.phone ? "'" + itemN.phone : "",
+          itemN.phone ? "'" + itemN.phone : "-",
           roleLabel,
-          itemN.isActive !== false ? "AKTIF" : "NONAKTIF",
-          itemN.specialDuty || "",
-          itemN.defaultOffDay !== undefined && itemN.defaultOffDay !== null ? itemN.defaultOffDay : ""
+          itemN.isActive !== false ? "AKTIF" : "NONAKTIF"
         ]);
       }
 
       if (nurseRows.length > 0) {
-        nurseSheet.getRange(2, 1, nurseRows.length, 8).setValues(nurseRows);
-        nurseSheet.autoResizeColumns(1, 8);
+        nurseSheet.getRange(2, 1, nurseRows.length, 6).setValues(nurseRows);
+        nurseSheet.autoResizeColumns(1, 6);
       }
     }
 
     // -------------------------------------------------------------
-    // 3. Simpan Data Mesin (Sheet: 'Data Mesin')
+    // 1. Simpan Master Mesin (Sheet: 'Master Mesin')
+    // Urut sesuai denah ruangan: Area A -> B -> C -> D -> E -> F -> Ruang Isolasi
     // -------------------------------------------------------------
     if (data.machines && Array.isArray(data.machines)) {
-      var machineSheet = ss.getSheetByName("Data Mesin") || ss.insertSheet("Data Mesin");
+      var machineSheet = getOrCreateMigratedSheet("Master Mesin", ["Data Mesin"]);
       machineSheet.clear();
 
-      var machineHeaders = [["ID", "Kode Mesin", "Nama Mesin", "Bay / Ruangan", "Kategori", "Status", "Brand Model", "Catatan"]];
+      var machineHeaders = [["No", "Kode Mesin", "Nama Mesin", "Area / Denah Ruangan", "Kategori", "Status", "Merk & Model", "Keterangan Posisi Denah"]];
       machineSheet.getRange(1, 1, 1, 8)
         .setValues(machineHeaders)
         .setBackground("#0284C7")
@@ -1943,57 +2008,91 @@ function doPost(e) {
       var machineRows = [];
       for (var m = 0; m < data.machines.length; m++) {
         var itemM = data.machines[m];
+        var mCode = itemM.code || "";
+        var mName = itemM.name || ("Mesin HD " + mCode);
+        var mBay = itemM.bay || itemM.zone || "Area A (Reguler)";
         machineRows.push([
-          itemM.id || (m + 1),
-          itemM.code || "",
-          itemM.name || "",
-          itemM.bay || "Bay A (Reguler)",
+          0,
+          mCode,
+          mName,
+          mBay,
           itemM.category || "REGULER",
           itemM.status || "AKTIF",
-          itemM.brandModel || "",
+          itemM.brandModel || itemM.model || "",
           itemM.notes || ""
         ]);
       }
 
+      // Urutkan sesuai denah ruangan rumah sakit
+      machineRows.sort(function(a, b) {
+        var rankA = getMachineDenahSortRank(a[1], a[3]);
+        var rankB = getMachineDenahSortRank(b[1], b[3]);
+        if (rankA !== rankB) return rankA - rankB;
+        return String(a[1] || "").localeCompare(String(b[1] || ""));
+      });
+
+      for (var mi = 0; mi < machineRows.length; mi++) {
+        machineRows[mi][0] = mi + 1;
+      }
+
       if (machineRows.length > 0) {
         machineSheet.getRange(2, 1, machineRows.length, 8).setValues(machineRows);
+        machineSheet.getRange(2, 1, machineRows.length, 2).setHorizontalAlignment("center");
         machineSheet.autoResizeColumns(1, 8);
       }
     }
 
     // -------------------------------------------------------------
-    // 4. Simpan Daftar Bay (Sheet: 'Daftar Bay')
+    // Pembersihan Sheet 'Daftar Bay' (Redundan - Data Bay/Area sudah tercatat lengkap di Master Mesin)
     // -------------------------------------------------------------
-    if (data.bays && Array.isArray(data.bays)) {
-      var baySheet = ss.getSheetByName("Daftar Bay") || ss.insertSheet("Daftar Bay");
-      baySheet.clear();
-      baySheet.getRange(1, 1, 1, 1).setValues([["Nama Bay / Ruangan"]]).setBackground("#475569").setFontColor("#FFFFFF").setFontWeight("bold");
-      var bayRows = [];
-      for (var b = 0; b < data.bays.length; b++) {
-        if (data.bays[b]) bayRows.push([data.bays[b]]);
-      }
-      if (bayRows.length > 0) {
-        baySheet.getRange(2, 1, bayRows.length, 1).setValues(bayRows);
-        baySheet.autoResizeColumns(1, 1);
-      }
+    var oldBaySheet = ss.getSheetByName("Daftar Bay") || ss.getSheetByName("Daftar Bay / Area") || ss.getSheetByName("Bay / Area");
+    if (oldBaySheet && ss.getSheets().length > 1) {
+      try { ss.deleteSheet(oldBaySheet); } catch(e) {}
     }
 
     // -------------------------------------------------------------
-    // 5. Simpan Detail Alokasi Mesin (Sheet: 'Alokasi Mesin' / 'Jadwal HD (Detail Mesin)')
-    // Menyimpan arsip data multi-bulan tanpa menimpa bulan lain
+    // 4. Simpan Data Alokasi Mesin (Sheet: 'Data alokasi mesin')
+    // Catatan/log alokasi mesin shif pagi dan siang urut sesuai tanggal
     // -------------------------------------------------------------
     if (data.assignments && Array.isArray(data.assignments)) {
-      var schedSheet = ss.getSheetByName("Alokasi Mesin") || ss.getSheetByName("Jadwal Alokasi Mesin") || ss.getSheetByName("Jadwal HD (Detail Mesin)") || ss.getSheetByName("Jadwal HD") || ss.insertSheet("Alokasi Mesin");
+      var schedSheet = getOrCreateMigratedSheet("Data alokasi mesin", ["Alokasi Mesin", "Jadwal Alokasi Mesin", "Jadwal HD (Detail Mesin)", "Jadwal HD"]);
       var targetMonthPrefix = data.month || "";
-      var schedHeaders = [["ID", "Tanggal", "Sif", "Kode Sif", "ID Perawat", "Nama Perawat", "Peran", "Alokasi Mesin HD", "Jumlah Mesin", "Tugas Khusus", "Catatan"]];
+      var schedHeaders = [["No", "Tanggal", "Hari", "Sif", "Kode Sif", "ID Perawat", "Nama Perawat", "Peran", "Alokasi Mesin HD", "Jumlah Mesin", "Tugas Khusus", "Catatan"]];
+      var indDays = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
       var existingRows = [];
       if (schedSheet.getLastRow() > 1) {
-        var oldVals = schedSheet.getRange(2, 1, schedSheet.getLastRow() - 1, 11).getValues();
+        var numCols = schedSheet.getLastColumn();
+        var oldVals = schedSheet.getRange(2, 1, schedSheet.getLastRow() - 1, numCols).getValues();
+        var hasNoCol = String(schedSheet.getRange(1, 1).getValue() || "").trim().toLowerCase() === "no";
         for (var ex = 0; ex < oldVals.length; ex++) {
-          var rowDate = parseDateToYMD(oldVals[ex][1]);
+          var rowDate = parseDateToYMD(hasNoCol ? oldVals[ex][1] : oldVals[ex][1]);
           if (!targetMonthPrefix || rowDate.indexOf(targetMonthPrefix) !== 0) {
-            existingRows.push(oldVals[ex]);
+            if (hasNoCol && numCols >= 12) {
+              existingRows.push(oldVals[ex].slice(0, 12));
+            } else {
+              var oldD = oldVals[ex];
+              var oDate = parseDateToYMD(oldD[1] || oldD[0]);
+              var oDay = "";
+              if (oDate) {
+                var oDt = new Date(oDate);
+                oDay = isNaN(oDt.getDay()) ? "" : indDays[oDt.getDay()];
+              }
+              existingRows.push([
+                0,
+                oDate,
+                oDay,
+                oldD[2] || "",
+                oldD[3] || "",
+                oldD[4] || "",
+                oldD[5] || "",
+                oldD[6] || "",
+                oldD[7] || "",
+                oldD[8] || 0,
+                oldD[9] || "",
+                oldD[10] || ""
+              ]);
+            }
           }
         }
       }
@@ -2003,9 +2102,16 @@ function doPost(e) {
         var itemA = data.assignments[i];
         var mList = Array.isArray(itemA.machines) ? itemA.machines.join(", ") : (itemA.machines || "");
         var roleStr = itemA.isLeader ? "PJ Sif / Katim" : "Perawat Pelaksana";
+        var aDateStr = itemA.date || "";
+        var aDayStr = "";
+        if (aDateStr) {
+          var aDtObj = new Date(aDateStr);
+          aDayStr = isNaN(aDtObj.getDay()) ? "" : indDays[aDtObj.getDay()];
+        }
         newSchedRows.push([
-          itemA.id || (itemA.date + "-" + (itemA.nurseId || i)),
-          itemA.date || "",
+          0,
+          aDateStr,
+          aDayStr,
           itemA.shiftType || "",
           itemA.shiftCode || "",
           itemA.nurseId || "",
@@ -2026,16 +2132,24 @@ function doPost(e) {
         if (dateA !== dateB) {
           return dateA.localeCompare(dateB);
         }
-        var rankA = getShiftSortRank(a[2], a[3]);
-        var rankB = getShiftSortRank(b[2], b[3]);
+        var rankA = getShiftSortRank(a[3], a[4]);
+        var rankB = getShiftSortRank(b[3], b[4]);
         if (rankA !== rankB) {
           return rankA - rankB;
         }
-        return String(a[5] || "").localeCompare(String(b[5] || ""));
+        // Pada shift yang sama: PJ Shif dahulu, lalu pelaksana
+        var isLeaderA = String(a[7] || "").indexOf("PJ") > -1 ? 0 : 1;
+        var isLeaderB = String(b[7] || "").indexOf("PJ") > -1 ? 0 : 1;
+        if (isLeaderA !== isLeaderB) return isLeaderA - isLeaderB;
+        return String(a[6] || "").localeCompare(String(b[6] || ""));
       });
 
+      for (var cr = 0; cr < combinedRows.length; cr++) {
+        combinedRows[cr][0] = cr + 1;
+      }
+
       schedSheet.clear();
-      schedSheet.getRange(1, 1, 1, 11)
+      schedSheet.getRange(1, 1, 1, 12)
         .setValues(schedHeaders)
         .setBackground("#0061A4")
         .setFontColor("#FFFFFF")
@@ -2044,21 +2158,23 @@ function doPost(e) {
       schedSheet.setFrozenRows(1);
 
       if (combinedRows.length > 0) {
-        schedSheet.getRange(2, 1, combinedRows.length, 11).setValues(combinedRows);
-        schedSheet.getRange(2, 2, combinedRows.length, 3).setHorizontalAlignment("center");
-        schedSheet.autoResizeColumns(1, 11);
+        schedSheet.getRange(2, 1, combinedRows.length, 12).setValues(combinedRows);
+        schedSheet.getRange(2, 1, combinedRows.length, 6).setHorizontalAlignment("center");
+        schedSheet.getRange(2, 10, combinedRows.length, 1).setHorizontalAlignment("center");
+        schedSheet.autoResizeColumns(1, 12);
       }
     }
 
     // -------------------------------------------------------------
-    // 6. Simpan Data Dokter Jaga HD (Sheet: 'Data Dokter')
+    // 3. Simpan Master Dokter (Sheet: 'Master Dokter')
+    // Berisi: ID Dokter, Nama Dokter, NIP, Nomor WhatsApp, Peran / Jabatan, Status Aktif
     // -------------------------------------------------------------
     if (data.doctors !== undefined) {
-      var docSheet = ss.getSheetByName("Data Dokter") || ss.insertSheet("Data Dokter");
+      var docSheet = getOrCreateMigratedSheet("Master Dokter", ["Data Dokter"]);
       docSheet.clear();
 
-      var docHeaders = [["ID", "Nama Dokter", "SIP", "No WhatsApp", "Peran (DPJP / DOKTER_RUANGAN)", "Spesialisasi", "Status (AKTIF / NONAKTIF)"]];
-      docSheet.getRange(1, 1, 1, 7)
+      var docHeaders = [["ID Dokter", "Nama Dokter", "NIP", "Nomor WhatsApp", "Peran / Jabatan", "Status Aktif"]];
+      docSheet.getRange(1, 1, 1, 6)
         .setValues(docHeaders)
         .setBackground("#0F766E")
         .setFontColor("#FFFFFF")
@@ -2070,31 +2186,31 @@ function doPost(e) {
       if (Array.isArray(data.doctors)) {
         for (var d = 0; d < data.doctors.length; d++) {
           var docItem = data.doctors[d];
+          var docRoleLabel = docItem.role === "DPJP" ? "DPJP / Penanggung Jawab HD" : "Dokter Ruangan HD";
           docRows.push([
             docItem.id || (d + 1),
             docItem.name || "",
-            docItem.sip || "",
-            "'" + (docItem.phone || ""),
-            docItem.role || "DOKTER_RUANGAN",
-            docItem.specialization || "",
+            docItem.nip || docItem.sip || "-",
+            docItem.phone ? "'" + docItem.phone : "-",
+            docRoleLabel,
             docItem.isActive !== false ? "AKTIF" : "NONAKTIF"
           ]);
         }
       }
 
       if (docRows.length === 0) {
-        // Berikan 1 baris kosong siap isi agar user dapat langsung mengetik nama dokter di Google Sheets
-        docRows.push([1, "", "", "", "DOKTER_RUANGAN", "", "AKTIF"]);
+        docRows.push([1000, "", "-", "-", "Dokter Ruangan HD", "AKTIF"]);
       }
 
-      docSheet.getRange(2, 1, docRows.length, 7).setValues(docRows);
-      docSheet.autoResizeColumns(1, 7);
+      docSheet.getRange(2, 1, docRows.length, 6).setValues(docRows);
+      docSheet.autoResizeColumns(1, 6);
     }
 
     // -------------------------------------------------------------
-    // 7. Simpan Jadwal Dokter Jaga HD (Tampilan Persis Seperti Sistem)
+    // 7. Simpan Matrik Jadwal Dokter (Sheet: 'Matrik Jadwal Dokter')
     // Urutan kronologis tanggal (1..31) & Tampilan Visual Lengkap
     // -------------------------------------------------------------
+    var docMatrixSheetName = "";
     if (data.doctorDuties && Array.isArray(data.doctorDuties)) {
       var indonesianDays = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -2118,360 +2234,231 @@ function doPost(e) {
         return dA.localeCompare(dB);
       });
 
-      // 7A. Buat Tab Khusus Bulanan: 'Jadwal Dokter - [Bulan Tahun]'
-      if (monthTitle) {
-        var docMonthSheetName = "Jadwal Dokter - " + monthTitle;
-        var docMonthSheet = ss.getSheetByName(docMonthSheetName) || ss.insertSheet(docMonthSheetName);
-        docMonthSheet.clear();
+      // 7A. Buat Tab Khusus: 'Matrik Jadwal Dokter' atau 'Matrik Jadwal Dokter - [Bulan Tahun]'
+      docMatrixSheetName = monthTitle ? ("Matrik Jadwal Dokter - " + monthTitle) : "Matrik Jadwal Dokter";
+      var docMonthSheet = getOrCreateMigratedSheet(docMatrixSheetName, [
+        "Matrik Jadwal Dokter",
+        "Jadwal Dokter - " + monthTitle,
+        "Jadwal Dokter HD",
+        "Jadwal Dokter"
+      ]);
+      docMonthSheet.clear();
+      try { docMonthSheet.setTabColor("#0E7490"); } catch(err) {}
 
-        try {
-          ss.setActiveSheet(docMonthSheet);
-          ss.moveActiveSheet(2); // Diletakkan di urutan ke-2 tepat setelah Matriks HD
-        } catch (e) {}
-
-        // 1. Judul Banner Atas
-        docMonthSheet.getRange("A1:G1").merge()
-          .setValue("JADWAL SHIFT DOKTER HEMODIALISA - " + monthTitle.toUpperCase())
-          .setBackground("#0061A4")
-          .setFontColor("#FFFFFF")
-          .setFontWeight("bold")
-          .setFontSize(13)
-          .setHorizontalAlignment("center")
-          .setVerticalAlignment("middle");
-        docMonthSheet.setRowHeight(1, 36);
-
-        // 2. Sub-judul Banner
-        docMonthSheet.getRange("A2:G2").merge()
-          .setValue("RS HAPPY LAND MEDICAL CENTRE | Shif Pagi (07:00 - 14:00) & Shif Siang (13:30 - 20:30) | 1 Dokter per Shif")
-          .setBackground("#0284C7")
-          .setFontColor("#FFFFFF")
-          .setFontStyle("italic")
-          .setFontSize(9)
-          .setHorizontalAlignment("center")
-          .setVerticalAlignment("middle");
-        docMonthSheet.setRowHeight(2, 22);
-
-        // 3. Header Tabel
-        var docTableHeaders = [["No", "Tanggal", "Hari", "Dokter Shif Pagi (07:00 - 14:00)", "Dokter Shif Siang (13:30 - 20:30)", "Status Dinas", "Catatan"]];
-        docMonthSheet.getRange(3, 1, 1, 7)
-          .setValues(docTableHeaders)
-          .setBackground("#1E40AF")
-          .setFontColor("#FFFFFF")
-          .setFontWeight("bold")
-          .setFontSize(10)
-          .setHorizontalAlignment("center")
-          .setVerticalAlignment("middle");
-        docMonthSheet.setRowHeight(3, 26);
-
-        // 4. Data Baris Jadwal Dokter (Urut Tanggal 1..31)
-        var monthDocRows = [];
-        var monthRowBgs = [];
-        var monthRowFontColors = [];
-        var monthRowFontWeights = [];
-
-        for (var mi = 0; mi < sortedDuties.length; mi++) {
-          var item = sortedDuties[mi];
-          var dObj = item.date ? new Date(item.date) : null;
-          var isSun = item.isSunday !== undefined ? Boolean(item.isSunday) : (dObj ? dObj.getDay() === 0 : false);
-          var dayName = item.dayName || (dObj && !isNaN(dObj.getDay()) ? indonesianDays[dObj.getDay()] : "");
-
-          var pagiName = isSun ? "Libur Rutin HD (Hari Minggu)" : (item.pagiDoctorName || "-");
-          var siangName = isSun ? "Libur Rutin HD (Hari Minggu)" : (item.siangDoctorName || "-");
-          var dutyStatus = item.status || getDoctorDutyStatus(pagiName, siangName, isSun);
-          var noteText = item.notes || (isSun ? "Libur Rutin HD (Hari Minggu)" : "");
-
-          monthDocRows.push([
-            mi + 1,
-            item.date || "",
-            dayName,
-            pagiName,
-            siangName,
-            dutyStatus,
-            noteText
-          ]);
-
-          if (isSun) {
-            monthRowBgs.push(["#FFE4E6", "#FFE4E6", "#FFE4E6", "#FFE4E6", "#FFE4E6", "#FEE2E2", "#FFE4E6"]);
-            monthRowFontColors.push(["#9F1239", "#9F1239", "#9F1239", "#BE123C", "#BE123C", "#B91C1C", "#9F1239"]);
-            monthRowFontWeights.push(["bold", "normal", "bold", "normal", "normal", "bold", "normal"]);
-          } else {
-            var bgRow = mi % 2 === 1 ? "#F8FAFC" : "#FFFFFF";
-            var statusBg = "#F1F5F9";
-            var statusFont = "#334155";
-
-            if (dutyStatus === "Lengkap (2 Dr)") {
-              statusBg = "#D1FAE5"; statusFont = "#065F46";
-            } else if (dutyStatus === "2 Shif Sekaligus") {
-              statusBg = "#EDE9FE"; statusFont = "#5B21B6";
-            } else if (dutyStatus === "Pagi Saja" || dutyStatus === "Siang Saja") {
-              statusBg = "#FEF3C7"; statusFont = "#92400E";
-            } else if (dutyStatus === "Belum Terisi") {
-              statusBg = "#FFE4E6"; statusFont = "#9F1239";
-            }
-
-            monthRowBgs.push([bgRow, bgRow, bgRow, bgRow, bgRow, statusBg, bgRow]);
-            monthRowFontColors.push(["#64748B", "#1E293B", "#1E293B", "#0F172A", "#0F172A", statusFont, "#64748B"]);
-            monthRowFontWeights.push(["normal", "normal", "bold", "normal", "normal", "bold", "normal"]);
-          }
-        }
-
-        if (monthDocRows.length > 0) {
-          var dataRange = docMonthSheet.getRange(4, 1, monthDocRows.length, 7);
-          dataRange.setValues(monthDocRows);
-          dataRange.setBackgrounds(monthRowBgs);
-          dataRange.setFontColors(monthRowFontColors);
-          dataRange.setFontWeights(monthRowFontWeights);
-          dataRange.setVerticalAlignment("middle");
-
-          docMonthSheet.getRange(4, 1, monthDocRows.length, 3).setHorizontalAlignment("center");
-          docMonthSheet.getRange(4, 4, monthDocRows.length, 2).setHorizontalAlignment("left");
-          docMonthSheet.getRange(4, 6, monthDocRows.length, 1).setHorizontalAlignment("center");
-          docMonthSheet.getRange(4, 7, monthDocRows.length, 1).setHorizontalAlignment("left");
-
-          for (var rIdx = 0; rIdx < monthDocRows.length; rIdx++) {
-            docMonthSheet.setRowHeight(4 + rIdx, 24);
-          }
-
-          dataRange.setBorder(true, true, true, true, true, true, "#CBD5E1", SpreadsheetApp.BorderStyle.SOLID);
-        }
-
-        docMonthSheet.setFrozenRows(3);
-        docMonthSheet.autoResizeColumns(1, 7);
-
-        // 5. Rekapitulasi Beban Jaga Dokter Bulan Ini (Summary Table)
-        var startSummaryRow = 4 + monthDocRows.length + 2;
-        docMonthSheet.getRange(startSummaryRow, 1, 1, 6).merge()
-          .setValue("RINGKASAN BEBAN JAGA DOKTER - " + monthTitle.toUpperCase())
-          .setBackground("#334155")
-          .setFontColor("#FFFFFF")
-          .setFontWeight("bold")
-          .setFontSize(10)
-          .setHorizontalAlignment("center")
-          .setVerticalAlignment("middle");
-        docMonthSheet.setRowHeight(startSummaryRow, 24);
-
-        var summaryHeaders = [["No", "Nama Dokter", "Spesialisasi / Peran", "Total Dinas", "Shif Pagi", "Shif Siang"]];
-        docMonthSheet.getRange(startSummaryRow + 1, 1, 1, 6)
-          .setValues(summaryHeaders)
-          .setBackground("#475569")
-          .setFontColor("#FFFFFF")
-          .setFontWeight("bold")
-          .setFontSize(9)
-          .setHorizontalAlignment("center")
-          .setVerticalAlignment("middle");
-        docMonthSheet.setRowHeight(startSummaryRow + 1, 22);
-
-        var docStatsMap = {};
-        if (data.doctors && Array.isArray(data.doctors)) {
-          for (var docI = 0; docI < data.doctors.length; docI++) {
-            var docObj = data.doctors[docI];
-            docStatsMap[docObj.name] = {
-              name: docObj.name,
-              spec: docObj.specialization || "Dokter Ruangan HD",
-              total: 0,
-              pagi: 0,
-              siang: 0
-            };
-          }
-        }
-
-        for (var sk = 0; sk < sortedDuties.length; sk++) {
-          var sItem = sortedDuties[sk];
-          var sSun = sItem.isSunday !== undefined ? Boolean(sItem.isSunday) : false;
-          if (sSun) continue;
-
-          var pDoc = sItem.pagiDoctorName;
-          var sDoc = sItem.siangDoctorName;
-
-          if (pDoc && pDoc !== "-" && pDoc.indexOf("Libur") === -1) {
-            if (!docStatsMap[pDoc]) docStatsMap[pDoc] = { name: pDoc, spec: "Dokter HD", total: 0, pagi: 0, siang: 0 };
-            docStatsMap[pDoc].pagi++;
-            docStatsMap[pDoc].total++;
-          }
-          if (sDoc && sDoc !== "-" && sDoc.indexOf("Libur") === -1) {
-            if (!docStatsMap[sDoc]) docStatsMap[sDoc] = { name: sDoc, spec: "Dokter HD", total: 0, pagi: 0, siang: 0 };
-            docStatsMap[sDoc].siang++;
-            docStatsMap[sDoc].total++;
-          }
-        }
-
-        var docStatRows = [];
-        var docStatKeys = Object.keys(docStatsMap);
-        for (var dsk = 0; dsk < docStatKeys.length; dsk++) {
-          var stat = docStatsMap[docStatKeys[dsk]];
-          docStatRows.push([
-            dsk + 1,
-            stat.name,
-            stat.spec,
-            stat.total,
-            stat.pagi,
-            stat.siang
-          ]);
-        }
-
-        if (docStatRows.length > 0) {
-          var statRange = docMonthSheet.getRange(startSummaryRow + 2, 1, docStatRows.length, 6);
-          statRange.setValues(docStatRows);
-          statRange.setBackground("#F8FAFC");
-          statRange.setFontSize(9);
-          statRange.setBorder(true, true, true, true, true, true, "#E2E8F0", SpreadsheetApp.BorderStyle.SOLID);
-
-          docMonthSheet.getRange(startSummaryRow + 2, 1, docStatRows.length, 1).setHorizontalAlignment("center");
-          docMonthSheet.getRange(startSummaryRow + 2, 2, docStatRows.length, 2).setHorizontalAlignment("left");
-          docMonthSheet.getRange(startSummaryRow + 2, 4, docStatRows.length, 3).setHorizontalAlignment("center").setFontWeight("bold");
-        }
-      }
-
-      // 7B. Simpan Tab Master 'Jadwal Dokter HD' (Arsip Gabungan Semua Tanggal Berurutan)
-      var dutySheet = ss.getSheetByName("Jadwal Dokter HD") || ss.insertSheet("Jadwal Dokter HD");
-      var dutyHeaders = [["No", "Tanggal", "Hari", "Dokter Shif Pagi (07:00 - 14:00)", "Dokter Shif Siang (13:30 - 20:30)", "Status Dinas", "Catatan", "ID Dokter Pagi", "ID Dokter Siang"]];
-
-      var existingDocRows = [];
-      if (dutySheet.getLastRow() > 1) {
-        var lastColNum = Math.max(dutySheet.getLastColumn(), 9);
-        var oldDocVals = dutySheet.getRange(2, 1, dutySheet.getLastRow() - 1, lastColNum).getValues();
-        var hasNo = String(dutySheet.getRange(1, 1).getValue() || "").trim().toLowerCase() === "no";
-        var dateCol = hasNo ? 1 : 0;
-
-        for (var ed = 0; ed < oldDocVals.length; ed++) {
-          var docRowDate = parseDateToYMD(oldDocVals[ed][dateCol]);
-          if (!targetMonthPrefix || docRowDate.indexOf(targetMonthPrefix) !== 0) {
-            var oldRow = oldDocVals[ed];
-            if (!hasNo) {
-              existingDocRows.push([
-                0,
-                formatCellDate(oldRow[0]),
-                String(oldRow[1] || ""),
-                String(oldRow[2] || "-"),
-                String(oldRow[3] || "-"),
-                "-",
-                String(oldRow[6] || ""),
-                String(oldRow[4] || ""),
-                String(oldRow[5] || "")
-              ]);
-            } else {
-              existingDocRows.push(oldRow.slice(0, 9));
-            }
-          }
-        }
-      }
-
-      var newDocRows = [];
-      for (var k = 0; k < sortedDuties.length; k++) {
-        var dutyItem = sortedDuties[k];
-        var dDateObj = dutyItem.date ? new Date(dutyItem.date) : null;
-        var isSunDay = dutyItem.isSunday !== undefined ? Boolean(dutyItem.isSunday) : (dDateObj ? dDateObj.getDay() === 0 : false);
-        var dayStr = dutyItem.dayName || (dDateObj && !isNaN(dDateObj.getDay()) ? indonesianDays[dDateObj.getDay()] : "");
-
-        var pDocName = isSunDay ? "Libur Rutin HD (Hari Minggu)" : (dutyItem.pagiDoctorName || "-");
-        var sDocName = isSunDay ? "Libur Rutin HD (Hari Minggu)" : (dutyItem.siangDoctorName || "-");
-        var st = dutyItem.status || getDoctorDutyStatus(pDocName, sDocName, isSunDay);
-
-        newDocRows.push([
-          0,
-          dutyItem.date || "",
-          dayStr,
-          pDocName,
-          sDocName,
-          st,
-          dutyItem.notes || (isSunDay ? "Libur Rutin HD (Hari Minggu)" : ""),
-          dutyItem.pagiDoctorId || "",
-          dutyItem.siangDoctorId || ""
-        ]);
-      }
-
-      var combinedDocRows = existingDocRows.concat(newDocRows);
-      combinedDocRows.sort(function(a, b) {
-        var dateA = parseDateToYMD(a[1]);
-        var dateB = parseDateToYMD(b[1]);
-        return dateA.localeCompare(dateB);
-      });
-
-      for (var cn = 0; cn < combinedDocRows.length; cn++) {
-        combinedDocRows[cn][0] = cn + 1;
-      }
-
-      dutySheet.clear();
-      dutySheet.getRange(1, 1, 1, 9)
-        .setValues(dutyHeaders)
+      // 1. Judul Banner Atas
+      docMonthSheet.getRange("A1:G1").merge()
+        .setValue("MATRIK JADWAL SHIFT DOKTER HEMODIALISA - " + (monthTitle ? monthTitle.toUpperCase() : "HD"))
         .setBackground("#0061A4")
+        .setFontColor("#FFFFFF")
+        .setFontWeight("bold")
+        .setFontSize(13)
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+      docMonthSheet.setRowHeight(1, 36);
+
+      // 2. Sub-judul Banner
+      docMonthSheet.getRange("A2:G2").merge()
+        .setValue("RS HAPPY LAND MEDICAL CENTRE | Shif Pagi (07:00 - 14:00) & Shif Siang (13:30 - 20:30) | 1 Dokter per Shif")
+        .setBackground("#0284C7")
+        .setFontColor("#FFFFFF")
+        .setFontStyle("italic")
+        .setFontSize(9)
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+      docMonthSheet.setRowHeight(2, 22);
+
+      // 3. Header Tabel
+      var docTableHeaders = [["No", "Tanggal", "Hari", "Dokter Shif Pagi (07:00 - 14:00)", "Dokter Shif Siang (13:30 - 20:30)", "Status Dinas", "Catatan"]];
+      docMonthSheet.getRange(3, 1, 1, 7)
+        .setValues(docTableHeaders)
+        .setBackground("#1E40AF")
         .setFontColor("#FFFFFF")
         .setFontWeight("bold")
         .setFontSize(10)
         .setHorizontalAlignment("center")
         .setVerticalAlignment("middle");
+      docMonthSheet.setRowHeight(3, 26);
 
-      dutySheet.setFrozenRows(1);
+      // 4. Data Baris Jadwal Dokter (Urut Tanggal 1..31)
+      var monthDocRows = [];
+      var monthRowBgs = [];
+      var monthRowFontColors = [];
+      var monthRowFontWeights = [];
 
-      if (combinedDocRows.length > 0) {
-        var masterRange = dutySheet.getRange(2, 1, combinedDocRows.length, 9);
-        masterRange.setValues(combinedDocRows);
+      for (var mi = 0; mi < sortedDuties.length; mi++) {
+        var item = sortedDuties[mi];
+        var dObj = item.date ? new Date(item.date) : null;
+        var isSun = item.isSunday !== undefined ? Boolean(item.isSunday) : (dObj ? dObj.getDay() === 0 : false);
+        var dayName = item.dayName || (dObj && !isNaN(dObj.getDay()) ? indonesianDays[dObj.getDay()] : "");
 
-        dutySheet.getRange(2, 1, combinedDocRows.length, 3).setHorizontalAlignment("center");
-        dutySheet.getRange(2, 4, combinedDocRows.length, 2).setHorizontalAlignment("left");
-        dutySheet.getRange(2, 6, combinedDocRows.length, 1).setHorizontalAlignment("center");
-        dutySheet.getRange(2, 7, combinedDocRows.length, 3).setHorizontalAlignment("left");
+        var pagiName = isSun ? "Libur Rutin HD (Hari Minggu)" : (item.pagiDoctorName || "-");
+        var siangName = isSun ? "Libur Rutin HD (Hari Minggu)" : (item.siangDoctorName || "-");
+        var dutyStatus = item.status || getDoctorDutyStatus(pagiName, siangName, isSun);
+        var noteText = item.notes || (isSun ? "Libur Rutin HD (Hari Minggu)" : "");
 
-        for (var ar = 0; ar < combinedDocRows.length; ar++) {
-          var arDate = combinedDocRows[ar][1];
-          var arDay = combinedDocRows[ar][2];
-          if (arDay === "Minggu" || (arDate && new Date(arDate).getDay() === 0)) {
-            dutySheet.getRange(2 + ar, 1, 1, 9).setBackground("#FFF1F2");
+        monthDocRows.push([
+          mi + 1,
+          item.date || "",
+          dayName,
+          pagiName,
+          siangName,
+          dutyStatus,
+          noteText
+        ]);
+
+        if (isSun) {
+          monthRowBgs.push(["#FFE4E6", "#FFE4E6", "#FFE4E6", "#FFE4E6", "#FFE4E6", "#FEE2E2", "#FFE4E6"]);
+          monthRowFontColors.push(["#9F1239", "#9F1239", "#9F1239", "#BE123C", "#BE123C", "#B91C1C", "#9F1239"]);
+          monthRowFontWeights.push(["bold", "normal", "bold", "normal", "normal", "bold", "normal"]);
+        } else {
+          var bgRow = mi % 2 === 1 ? "#F8FAFC" : "#FFFFFF";
+          var statusBg = "#F1F5F9";
+          var statusFont = "#334155";
+
+          if (dutyStatus === "Lengkap (2 Dr)") {
+            statusBg = "#D1FAE5"; statusFont = "#065F46";
+          } else if (dutyStatus === "2 Shif Sekaligus") {
+            statusBg = "#EDE9FE"; statusFont = "#5B21B6";
+          } else if (dutyStatus === "Pagi Saja" || dutyStatus === "Siang Saja") {
+            statusBg = "#FEF3C7"; statusFont = "#92400E";
+          } else if (dutyStatus === "Belum Terisi") {
+            statusBg = "#FFE4E6"; statusFont = "#9F1239";
           }
+
+          monthRowBgs.push([bgRow, bgRow, bgRow, bgRow, bgRow, statusBg, bgRow]);
+          monthRowFontColors.push(["#64748B", "#1E293B", "#1E293B", "#0F172A", "#0F172A", statusFont, "#64748B"]);
+          monthRowFontWeights.push(["normal", "normal", "bold", "normal", "normal", "bold", "normal"]);
+        }
+      }
+
+      if (monthDocRows.length > 0) {
+        var dataRange = docMonthSheet.getRange(4, 1, monthDocRows.length, 7);
+        dataRange.setValues(monthDocRows);
+        dataRange.setBackgrounds(monthRowBgs);
+        dataRange.setFontColors(monthRowFontColors);
+        dataRange.setFontWeights(monthRowFontWeights);
+        dataRange.setVerticalAlignment("middle");
+
+        docMonthSheet.getRange(4, 1, monthDocRows.length, 3).setHorizontalAlignment("center");
+        docMonthSheet.getRange(4, 4, monthDocRows.length, 2).setHorizontalAlignment("left");
+        docMonthSheet.getRange(4, 6, monthDocRows.length, 1).setHorizontalAlignment("center");
+        docMonthSheet.getRange(4, 7, monthDocRows.length, 1).setHorizontalAlignment("left");
+
+        for (var rIdx = 0; rIdx < monthDocRows.length; rIdx++) {
+          docMonthSheet.setRowHeight(4 + rIdx, 24);
         }
 
-        dutySheet.autoResizeColumns(1, 9);
+        dataRange.setBorder(true, true, true, true, true, true, "#CBD5E1", SpreadsheetApp.BorderStyle.SOLID);
       }
-    }
 
-    // -------------------------------------------------------------
-    // 8. Simpan Master Tugas Khusus (Sheet: 'Master Tugas Khusus')
-    // -------------------------------------------------------------
-    if (data.specialDutyOptions && Array.isArray(data.specialDutyOptions)) {
-      var sdSheet = ss.getSheetByName("Master Tugas Khusus") || ss.getSheetByName("Tugas Khusus") || ss.insertSheet("Master Tugas Khusus");
-      sdSheet.clear();
+      docMonthSheet.setFrozenRows(3);
+      docMonthSheet.autoResizeColumns(1, 7);
 
-      var sdHeaders = [["Kode Tugas", "Singkatan", "Nama Lengkap / Label", "Deskripsi / Tugas Pokok", "Warna Tema", "Kode Hex Dot", "Kategori"]];
-      sdSheet.getRange(1, 1, 1, 7)
-        .setValues(sdHeaders)
-        .setBackground("#6366F1")
+      // 5. Rekapitulasi Beban Jaga Dokter Bulan Ini (Summary Table)
+      var startSummaryRow = 4 + monthDocRows.length + 2;
+      docMonthSheet.getRange(startSummaryRow, 1, 1, 6).merge()
+        .setValue("RINGKASAN BEBAN JAGA DOKTER - " + (monthTitle ? monthTitle.toUpperCase() : "HD"))
+        .setBackground("#334155")
         .setFontColor("#FFFFFF")
-        .setFontWeight("bold");
+        .setFontWeight("bold")
+        .setFontSize(10)
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+      docMonthSheet.setRowHeight(startSummaryRow, 24);
 
-      sdSheet.setFrozenRows(1);
+      var summaryHeaders = [["No", "Nama Dokter", "Spesialisasi / Peran", "Total Dinas", "Shif Pagi", "Shif Siang"]];
+      docMonthSheet.getRange(startSummaryRow + 1, 1, 1, 6)
+        .setValues(summaryHeaders)
+        .setBackground("#475569")
+        .setFontColor("#FFFFFF")
+        .setFontWeight("bold")
+        .setFontSize(9)
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+      docMonthSheet.setRowHeight(startSummaryRow + 1, 22);
 
-      var sdRows = [];
-      for (var s = 0; s < data.specialDutyOptions.length; s++) {
-        var itemSD = data.specialDutyOptions[s];
-        sdRows.push([
-          itemSD.code || "",
-          itemSD.shortName || itemSD.code || "",
-          itemSD.label || "",
-          itemSD.description || "",
-          itemSD.colorName || "Biru",
-          itemSD.dotColorHex || "#3b82f6",
-          itemSD.isCustom ? "Kustom" : "Standar"
+      var docStatsMap = {};
+      if (data.doctors && Array.isArray(data.doctors)) {
+        for (var docI = 0; docI < data.doctors.length; docI++) {
+          var docObj = data.doctors[docI];
+          docStatsMap[docObj.name] = {
+            name: docObj.name,
+            spec: docObj.specialization || "Dokter Ruangan HD",
+            total: 0,
+            pagi: 0,
+            siang: 0
+          };
+        }
+      }
+
+      for (var sk = 0; sk < sortedDuties.length; sk++) {
+        var sItem = sortedDuties[sk];
+        var sSun = sItem.isSunday !== undefined ? Boolean(sItem.isSunday) : false;
+        if (sSun) continue;
+
+        var pDoc = sItem.pagiDoctorName;
+        var sDoc = sItem.siangDoctorName;
+
+        if (pDoc && pDoc !== "-" && pDoc.indexOf("Libur") === -1) {
+          if (!docStatsMap[pDoc]) docStatsMap[pDoc] = { name: pDoc, spec: "Dokter HD", total: 0, pagi: 0, siang: 0 };
+          docStatsMap[pDoc].pagi++;
+          docStatsMap[pDoc].total++;
+        }
+        if (sDoc && sDoc !== "-" && sDoc.indexOf("Libur") === -1) {
+          if (!docStatsMap[sDoc]) docStatsMap[sDoc] = { name: sDoc, spec: "Dokter HD", total: 0, pagi: 0, siang: 0 };
+          docStatsMap[sDoc].siang++;
+          docStatsMap[sDoc].total++;
+        }
+      }
+
+      var docStatRows = [];
+      var docStatKeys = Object.keys(docStatsMap);
+      for (var dsk = 0; dsk < docStatKeys.length; dsk++) {
+        var stat = docStatsMap[docStatKeys[dsk]];
+        docStatRows.push([
+          dsk + 1,
+          stat.name,
+          stat.spec,
+          stat.total,
+          stat.pagi,
+          stat.siang
         ]);
       }
 
-      if (sdRows.length > 0) {
-        sdSheet.getRange(2, 1, sdRows.length, 7).setValues(sdRows);
-        sdSheet.autoResizeColumns(1, 7);
+      if (docStatRows.length > 0) {
+        var statRange = docMonthSheet.getRange(startSummaryRow + 2, 1, docStatRows.length, 6);
+        statRange.setValues(docStatRows);
+        statRange.setBackground("#F8FAFC");
+        statRange.setFontSize(9);
+        statRange.setBorder(true, true, true, true, true, true, "#E2E8F0", SpreadsheetApp.BorderStyle.SOLID);
+
+        docMonthSheet.getRange(startSummaryRow + 2, 1, docStatRows.length, 1).setHorizontalAlignment("center");
+        docMonthSheet.getRange(startSummaryRow + 2, 2, docStatRows.length, 2).setHorizontalAlignment("left");
+        docMonthSheet.getRange(startSummaryRow + 2, 4, docStatRows.length, 3).setHorizontalAlignment("center").setFontWeight("bold");
       }
     }
 
     // -------------------------------------------------------------
-    // 9. Simpan Jadwal Rekap Tugas Khusus (Sheet: 'Jadwal Tugas Khusus')
-    // Menyimpan rekap tugas khusus multi-bulan: Urut tanggal & Shif Pagi lalu Siang.
-    // Catatan: Data Alokasi Mesin terdapat pada sheet terpisah ('Alokasi Mesin')
+    // Pembersihan Sheet 'Master Tugas Khusus' (Redundan - Definisi sudah terkelola di sistem aplikasi & penugasan harian di 'Data tugas khusus')
+    // -------------------------------------------------------------
+    var oldMasterDutySheet = ss.getSheetByName("Master Tugas Khusus");
+    if (oldMasterDutySheet && ss.getSheets().length > 1) {
+      try { ss.deleteSheet(oldMasterDutySheet); } catch(e) {}
+    }
+
+    // -------------------------------------------------------------
+    // 5. Simpan Data Tugas Khusus (Sheet: 'Data tugas khusus')
+    // Berisi data Tugas Khusus yang sudah di-inputkan untuk kedua shif
+    // Urut sesuai tanggal dan shif pagi (PJ shif, BHP, Farmasi Logistik, Natrium RO lalu CITO)
+    // dilanjutkan shif siang (PJ shif, BHP, Farmasi Logistik, Natrium RO lalu CITO)
     // -------------------------------------------------------------
     var shouldSyncDutySheet = (!data.isPartialSync && (data.assignments || data.dailySpecialTasks || data.specialTasks)) ||
                              (data.syncSpecialTasks === true) ||
                              ((data.dailySpecialTasks || data.specialTasks) && data.syncSpecialTasks !== false);
 
     if (shouldSyncDutySheet && ((data.assignments && Array.isArray(data.assignments)) || (data.dailySpecialTasks && Array.isArray(data.dailySpecialTasks)) || (data.specialTasks && Array.isArray(data.specialTasks)))) {
-      var dutySchedSheet = ss.getSheetByName("Jadwal Tugas Khusus") || ss.insertSheet("Jadwal Tugas Khusus");
-      var dHeaders = [["Tanggal", "Hari", "Sif", "Kode Sif", "Nama Perawat", "Peran", "Tugas Khusus", "Catatan"]];
+      var dutySchedSheet = getOrCreateMigratedSheet("Data tugas khusus", ["Jadwal Tugas Khusus", "Data Tugas Khusus", "Tugas Khusus"]);
+      var dHeaders = [["No", "Tanggal", "Hari", "Sif", "Kode Sif", "Tugas Khusus", "Nama Perawat", "Peran / Jabatan", "Keterangan / Rincian Tugas"]];
       var targetMonthPrefix = data.month || "";
       var dayNamesList = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -2479,31 +2466,25 @@ function doPost(e) {
       if (dutySchedSheet.getLastRow() > 1) {
         var numOldCols = dutySchedSheet.getLastColumn();
         var oldDutyVals = dutySchedSheet.getRange(2, 1, dutySchedSheet.getLastRow() - 1, numOldCols).getValues();
+        var hasNoHeader = String(dutySchedSheet.getRange(1, 1).getValue() || "").trim().toLowerCase() === "no";
+        var dateColIdx = hasNoHeader ? 1 : 0;
+
         for (var od = 0; od < oldDutyVals.length; od++) {
           var oldRow = oldDutyVals[od];
-          var dutyRowDate = parseDateToYMD(oldRow[0]);
+          var dutyRowDate = parseDateToYMD(oldRow[dateColIdx]);
           if (!targetMonthPrefix || dutyRowDate.indexOf(targetMonthPrefix) !== 0) {
-            // Kompatibilitas jika format lama memiliki kolom 'Alokasi Mesin' di index 7 (9 kolom)
-            if (numOldCols >= 9) {
-              existingDutyRows.push([
-                oldRow[0] || "",
-                oldRow[1] || "",
-                oldRow[2] || "",
-                oldRow[3] || "",
-                oldRow[4] || "",
-                oldRow[5] || "",
-                oldRow[6] || "",
-                oldRow[8] || oldRow[7] || ""
-              ]);
+            if (hasNoHeader && numOldCols >= 9) {
+              existingDutyRows.push(oldRow.slice(0, 9));
             } else {
               existingDutyRows.push([
+                0,
                 oldRow[0] || "",
                 oldRow[1] || "",
                 oldRow[2] || "",
                 oldRow[3] || "",
+                oldRow[6] || "",
                 oldRow[4] || "",
                 oldRow[5] || "",
-                oldRow[6] || "",
                 oldRow[7] || ""
               ]);
             }
@@ -2534,13 +2515,14 @@ function doPost(e) {
           var pNotes = pItem.description || pItem.title || pItem.notes || "";
 
           newDutySchedRows.push([
+            0,
             pDate,
             pDay,
             pShiftLabel,
             pShiftCode,
+            pCategory,
             pNurse,
             pRole,
-            pCategory,
             pNotes
           ]);
         }
@@ -2556,7 +2538,7 @@ function doPost(e) {
             var aDuty = aRow.specialDuty;
             var isAlreadyIncluded = false;
             for (var c = 0; c < newDutySchedRows.length; c++) {
-              if (newDutySchedRows[c][0] === aDate && String(newDutySchedRows[c][4]).toLowerCase() === String(aNurse).toLowerCase()) {
+              if (newDutySchedRows[c][1] === aDate && String(newDutySchedRows[c][6]).toLowerCase() === String(aNurse).toLowerCase()) {
                 isAlreadyIncluded = true;
                 break;
               }
@@ -2568,13 +2550,14 @@ function doPost(e) {
                 aDay = isNaN(aDt.getDay()) ? "" : dayNamesList[aDt.getDay()];
               }
               newDutySchedRows.push([
+                0,
                 aDate,
                 aDay,
                 aRow.shiftType || "Pagi",
                 aRow.shiftCode || "P",
+                aDuty,
                 aNurse,
                 aRow.isLeader ? "PJ Sif / Katim" : "Perawat Pelaksana",
-                aDuty,
                 aRow.notes || ""
               ]);
             }
@@ -2584,44 +2567,87 @@ function doPost(e) {
 
       var combinedDutyRows = existingDutyRows.concat(newDutySchedRows);
 
-      // Urutkan data berdasarkan Tanggal (kronologis), didahului Shif Pagi lalu Shif Siang
+      // Urutkan data berdasarkan:
+      // 1. Tanggal kronologis
+      // 2. Shif Pagi (rank 1) didahulukan, baru Shif Siang (rank 2)
+      // 3. Tugas Khusus: PJ shif (1), BHP (2), Farmasi Logistik (3), Natrium RO (4), CITO (5), lainnya (99)
+      // 4. Nama Perawat
       combinedDutyRows.sort(function(a, b) {
-        var dateA = String(a[0] || "");
-        var dateB = String(b[0] || "");
+        var dateA = String(a[1] || "");
+        var dateB = String(b[1] || "");
         if (dateA !== dateB) {
           return dateA.localeCompare(dateB);
         }
-        // Pada tanggal yang sama, urutkan Shif Pagi dahulu lalu Shif Siang
-        var rankA = getShiftSortRank(a[2], a[3]);
-        var rankB = getShiftSortRank(b[2], b[3]);
-        if (rankA !== rankB) {
-          return rankA - rankB;
+        var rankShiftA = getShiftSortRank(a[3], a[4]);
+        var rankShiftB = getShiftSortRank(b[3], b[4]);
+        if (rankShiftA !== rankShiftB) {
+          return rankShiftA - rankShiftB;
         }
-        // Jika sif sama, urutkan berdasarkan nama perawat
-        var nurseA = String(a[4] || "").toLowerCase();
-        var nurseB = String(b[4] || "").toLowerCase();
-        return nurseA.localeCompare(nurseB);
+        var taskRankA = getSpecialTaskRank(a[5]);
+        var taskRankB = getSpecialTaskRank(b[5]);
+        if (taskRankA !== taskRankB) {
+          return taskRankA - taskRankB;
+        }
+        return String(a[6] || "").localeCompare(String(b[6] || ""));
       });
 
+      for (var dIdx = 0; dIdx < combinedDutyRows.length; dIdx++) {
+        combinedDutyRows[dIdx][0] = dIdx + 1;
+      }
+
       dutySchedSheet.clear();
-      dutySchedSheet.getRange(1, 1, 1, 8)
+      dutySchedSheet.getRange(1, 1, 1, 9)
         .setValues(dHeaders)
-        .setBackground("#0F766E")
+        .setBackground("#7C3AED")
         .setFontColor("#FFFFFF")
         .setFontWeight("bold");
 
       dutySchedSheet.setFrozenRows(1);
 
       if (combinedDutyRows.length > 0) {
-        dutySchedSheet.getRange(2, 1, combinedDutyRows.length, 8).setValues(combinedDutyRows);
-        dutySchedSheet.getRange(2, 1, combinedDutyRows.length, 4).setHorizontalAlignment("center");
-        dutySchedSheet.autoResizeColumns(1, 8);
+        dutySchedSheet.getRange(2, 1, combinedDutyRows.length, 9).setValues(combinedDutyRows);
+        dutySchedSheet.getRange(2, 1, combinedDutyRows.length, 5).setHorizontalAlignment("center");
+        dutySchedSheet.autoResizeColumns(1, 9);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // RE-ORDER POSISI TAB LEMBAR KERJA SESUAI URUTAN BAKU (1 SAMPAI 7):
+    // 1. Master Mesin
+    // 2. Master Perawat
+    // 3. Master Dokter
+    // 4. Data alokasi mesin
+    // 5. Data tugas khusus
+    // 6. Matrik Jadwal Perawat
+    // 7. Matrik Jadwal Dokter
+    // -------------------------------------------------------------
+    var orderedTabList = [
+      "Master Mesin",
+      "Master Perawat",
+      "Master Dokter",
+      "Data alokasi mesin",
+      "Data tugas khusus",
+      (matrixSheet ? matrixSheet.getName() : (monthTitle ? ("Matrik Jadwal Perawat - " + monthTitle) : "Matrik Jadwal Perawat")),
+      (docMatrixSheetName || (monthTitle ? ("Matrik Jadwal Dokter - " + monthTitle) : "Matrik Jadwal Dokter"))
+    ];
+
+    var sheetPositionIndex = 1;
+    for (var ot = 0; ot < orderedTabList.length; ot++) {
+      var tabTargetName = orderedTabList[ot];
+      if (!tabTargetName) continue;
+      var foundTab = ss.getSheetByName(tabTargetName);
+      if (foundTab) {
+        try {
+          ss.setActiveSheet(foundTab);
+          ss.moveActiveSheet(sheetPositionIndex);
+          sheetPositionIndex++;
+        } catch(tabErr) {}
       }
     }
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
-      message: "Berhasil menyinkronkan data perawat, mesin, bay, dokter, tugas khusus & jadwal HD ke Google Sheets!",
+      message: "Berhasil menyinkronkan data perawat, mesin, dokter, tugas khusus & jadwal HD ke Google Sheets!",
       timestamp: timestamp
     })).setMimeType(ContentService.MimeType.JSON);
 
@@ -2675,9 +2701,9 @@ function doGet(e) {
 
     // 1. Baca Data Perawat
     var nurses = [];
-    var nurseSheet = ss.getSheetByName("Data Perawat");
+    var nurseSheet = ss.getSheetByName("Master Perawat") || ss.getSheetByName("Data Perawat");
     if (nurseSheet && nurseSheet.getLastRow() > 1) {
-      var nurseValues = nurseSheet.getRange(2, 1, nurseSheet.getLastRow() - 1, 8).getValues();
+      var nurseValues = nurseSheet.getRange(2, 1, nurseSheet.getLastRow() - 1, Math.min(nurseSheet.getLastColumn(), 8)).getValues();
       for (var i = 0; i < nurseValues.length; i++) {
         var r = nurseValues[i];
         var name = String(r[1] || "").trim();
@@ -2690,7 +2716,7 @@ function doGet(e) {
             role: String(r[4] || "PELAKSANA").trim(),
             isActive: String(r[5]).toUpperCase() !== "NONAKTIF",
             specialDuty: r[6] ? String(r[6]).trim() : null,
-            defaultOffDay: r[7] !== "" && r[7] !== null ? Number(r[7]) : null,
+            defaultOffDay: r[7] !== "" && r[7] !== null && r[7] !== undefined ? Number(r[7]) : null,
             skillLevel: "Senior",
             isPermanent: true
           });
@@ -2700,22 +2726,23 @@ function doGet(e) {
 
     // 2. Baca Data Mesin
     var machines = [];
-    var machineSheet = ss.getSheetByName("Data Mesin");
+    var machineSheet = ss.getSheetByName("Master Mesin") || ss.getSheetByName("Data Mesin");
     if (machineSheet && machineSheet.getLastRow() > 1) {
-      var machineValues = machineSheet.getRange(2, 1, machineSheet.getLastRow() - 1, 8).getValues();
+      var machineValues = machineSheet.getRange(2, 1, machineSheet.getLastRow() - 1, Math.min(machineSheet.getLastColumn(), 8)).getValues();
+      var isMasterMesinFormat = String(machineSheet.getRange(1, 1).getValue() || "").trim().toLowerCase() === "no";
       for (var j = 0; j < machineValues.length; j++) {
         var rm = machineValues[j];
-        var code = String(rm[1] || "").trim();
+        var code = String(isMasterMesinFormat ? (rm[1] || "") : (rm[1] || rm[0] || "")).trim();
         if (code) {
           machines.push({
             id: Number(rm[0]) || (j + 1),
             code: code,
-            name: String(rm[2] || ("Mesin " + code)).trim(),
-            bay: String(rm[3] || "Bay A (Reguler)").trim(),
-            category: String(rm[4] || "REGULER").trim(),
-            status: String(rm[5] || "AKTIF").trim(),
-            brandModel: String(rm[6] || "").trim(),
-            notes: String(rm[7] || "").trim()
+            name: String(isMasterMesinFormat ? rm[2] : (rm[2] || ("Mesin " + code))).trim(),
+            bay: String(isMasterMesinFormat ? rm[3] : (rm[3] || "Area A (Reguler)")).trim(),
+            category: String(isMasterMesinFormat ? rm[4] : (rm[4] || "REGULER")).trim(),
+            status: String(isMasterMesinFormat ? rm[5] : (rm[5] || "AKTIF")).trim(),
+            brandModel: String(isMasterMesinFormat ? rm[6] : (rm[6] || "")).trim(),
+            notes: String(isMasterMesinFormat ? rm[7] : (rm[7] || "")).trim()
           });
         }
       }
@@ -2757,15 +2784,16 @@ function doGet(e) {
     // 5. Peta Alokasi Mesin dan Tugas Khusus dari Sheet Detail & Rekap Tugas Khusus
     var machineMap = {};
     var dutyMap = {};
-    var detailSheet = ss.getSheetByName("Alokasi Mesin") || ss.getSheetByName("Jadwal Alokasi Mesin") || ss.getSheetByName("Jadwal HD (Detail Mesin)") || ss.getSheetByName("Jadwal HD");
+    var detailSheet = ss.getSheetByName("Data alokasi mesin") || ss.getSheetByName("Alokasi Mesin") || ss.getSheetByName("Jadwal Alokasi Mesin") || ss.getSheetByName("Jadwal HD (Detail Mesin)") || ss.getSheetByName("Jadwal HD");
     if (detailSheet && detailSheet.getLastRow() > 1) {
-      var detailVals = detailSheet.getRange(2, 1, detailSheet.getLastRow() - 1, 11).getValues();
+      var detailVals = detailSheet.getRange(2, 1, detailSheet.getLastRow() - 1, Math.min(detailSheet.getLastColumn(), 12)).getValues();
+      var hasNoColDetail = String(detailSheet.getRange(1, 1).getValue() || "").trim().toLowerCase() === "no";
       for (var d = 0; d < detailVals.length; d++) {
         var dr = detailVals[d];
-        var dDate = formatCellDate(dr[1]);
-        var dNurse = String(dr[5] || "").trim().toLowerCase();
-        var dMachines = String(dr[7] || "").split(/[,;\s]+/).filter(Boolean);
-        var dDuty = dr[9] ? String(dr[9]).trim() : "";
+        var dDate = formatCellDate(hasNoColDetail ? dr[1] : dr[0]);
+        var dNurse = String(hasNoColDetail ? (dr[6] || "") : (dr[5] || "")).trim().toLowerCase();
+        var dMachines = String(hasNoColDetail ? (dr[8] || "") : (dr[7] || "")).split(/[,;\s]+/).filter(Boolean);
+        var dDuty = (hasNoColDetail ? dr[10] : dr[9]) ? String(hasNoColDetail ? dr[10] : dr[9]).trim() : "";
         if (dDate && dNurse) {
           var key = dDate + "_" + dNurse;
           machineMap[key] = dMachines;
@@ -2776,16 +2804,17 @@ function doGet(e) {
       }
     }
 
-    // Lengkapi dutyMap dari sheet 'Jadwal Tugas Khusus' jika ada (alokasi mesin berada di sheet terpisah)
-    var dutySchedSheetRead = ss.getSheetByName("Jadwal Tugas Khusus");
+    // Lengkapi dutyMap dari sheet 'Data tugas khusus' jika ada
+    var dutySchedSheetRead = ss.getSheetByName("Data tugas khusus") || ss.getSheetByName("Jadwal Tugas Khusus") || ss.getSheetByName("Tugas Khusus");
     if (dutySchedSheetRead && dutySchedSheetRead.getLastRow() > 1) {
-      var numReadCols = Math.min(dutySchedSheetRead.getLastColumn(), 8);
+      var numReadCols = Math.min(dutySchedSheetRead.getLastColumn(), 9);
       var dutySchedVals = dutySchedSheetRead.getRange(2, 1, dutySchedSheetRead.getLastRow() - 1, numReadCols).getValues();
+      var hasNoColDuty = String(dutySchedSheetRead.getRange(1, 1).getValue() || "").trim().toLowerCase() === "no";
       for (var dsi = 0; dsi < dutySchedVals.length; dsi++) {
         var dsr = dutySchedVals[dsi];
-        var dsDate = formatCellDate(dsr[0]);
-        var dsNurse = String(dsr[4] || "").trim().toLowerCase();
-        var dsDuty = String(dsr[6] || "").trim();
+        var dsDate = formatCellDate(hasNoColDuty ? dsr[1] : dsr[0]);
+        var dsNurse = String(hasNoColDuty ? (dsr[6] || "") : (dsr[4] || "")).trim().toLowerCase();
+        var dsDuty = String(hasNoColDuty ? (dsr[5] || "") : (dsr[6] || "")).trim();
         if (dsDate && dsNurse && dsDuty) {
           var dsKey = dsDate + "_" + dsNurse;
           dutyMap[dsKey] = dutyMap[dsKey] ? (dutyMap[dsKey] + ", " + dsDuty) : dsDuty;
@@ -2793,7 +2822,7 @@ function doGet(e) {
       }
     }
 
-    // 6. Baca Jadwal Perawat: Prioritas baca tab khusus bulan (misal 'Matriks HD - September 2026') atau 'Matriks Jadwal HD'
+    // 6. Baca Jadwal Perawat: Prioritas baca tab khusus bulan (misal 'Matrik Jadwal Perawat - September 2026')
     var assignments = [];
     var matrixSheet = null;
 
@@ -2810,27 +2839,29 @@ function doGet(e) {
       }
 
       if (expectedTitle) {
-        matrixSheet = ss.getSheetByName("Matriks HD - " + expectedTitle) ||
+        matrixSheet = ss.getSheetByName("Matrik Jadwal Perawat - " + expectedTitle) ||
+                      ss.getSheetByName("Matriks HD - " + expectedTitle) ||
                       ss.getSheetByName("Matriks Jadwal - " + expectedTitle) ||
                       ss.getSheetByName("Matriks HD " + expectedTitle);
       }
       if (!matrixSheet) {
-        matrixSheet = ss.getSheetByName("Matriks HD - " + paramMonth) ||
+        matrixSheet = ss.getSheetByName("Matrik Jadwal Perawat - " + paramMonth) ||
+                      ss.getSheetByName("Matriks HD - " + paramMonth) ||
                       ss.getSheetByName("Matriks Jadwal " + paramMonth) ||
                       ss.getSheetByName("Jadwal " + paramMonth);
       }
     }
 
     if (!matrixSheet) {
-      matrixSheet = ss.getSheetByName("Matriks Jadwal HD");
+      matrixSheet = ss.getSheetByName("Matrik Jadwal Perawat") || ss.getSheetByName("Matriks Jadwal HD");
     }
 
-    // Jika belum ketemu, cari tab pertama yang namanya berawalan 'Matriks HD'
+    // Jika belum ketemu, cari tab pertama yang namanya berawalan 'Matrik Jadwal Perawat' atau 'Matriks HD'
     if (!matrixSheet) {
       var allSheets = ss.getSheets();
       for (var s = 0; s < allSheets.length; s++) {
         var sName = allSheets[s].getName();
-        if (sName.indexOf("Matriks HD") === 0) {
+        if (sName.indexOf("Matrik Jadwal Perawat") === 0 || sName.indexOf("Matriks HD") === 0) {
           matrixSheet = allSheets[s];
           break;
         }
@@ -2956,9 +2987,9 @@ function doGet(e) {
 
     // 7. Baca Data Dokter
     var doctors = [];
-    var docSheet = ss.getSheetByName("Data Dokter");
+    var docSheet = ss.getSheetByName("Master Dokter") || ss.getSheetByName("Data Dokter");
     if (docSheet && docSheet.getLastRow() > 1) {
-      var docVals = docSheet.getRange(2, 1, docSheet.getLastRow() - 1, 7).getValues();
+      var docVals = docSheet.getRange(2, 1, docSheet.getLastRow() - 1, Math.min(docSheet.getLastColumn(), 7)).getValues();
       for (var di = 0; di < docVals.length; di++) {
         var dr = docVals[di];
         var dName = String(dr[1] || "").trim();
@@ -2970,32 +3001,45 @@ function doGet(e) {
             phone: String(dr[3] || "").replace(/^'/, "").trim(),
             role: String(dr[4] || "DOKTER_RUANGAN").trim(),
             specialization: String(dr[5] || "").trim(),
-            isActive: String(dr[6]).toUpperCase() !== "NONAKTIF"
+            isActive: String(dr[6] || dr[5] || "").toUpperCase() !== "NONAKTIF"
           });
         }
       }
     }
 
-    // 8. Baca Jadwal Dokter HD
+    // 8. Baca Matrik Jadwal Dokter HD
     var doctorDuties = [];
-    var dutySheet = ss.getSheetByName("Jadwal Dokter HD");
+    var dutySheet = (expectedTitle ? ss.getSheetByName("Matrik Jadwal Dokter - " + expectedTitle) : null) ||
+                    ss.getSheetByName("Matrik Jadwal Dokter") ||
+                    (expectedTitle ? ss.getSheetByName("Jadwal Dokter - " + expectedTitle) : null) ||
+                    ss.getSheetByName("Jadwal Dokter HD") ||
+                    ss.getSheetByName("Jadwal Dokter");
     if (dutySheet && dutySheet.getLastRow() > 1) {
       var lastDutyCol = Math.max(dutySheet.getLastColumn(), 7);
       var dutyVals = dutySheet.getRange(2, 1, dutySheet.getLastRow() - 1, lastDutyCol).getValues();
       var firstHdr = String(dutySheet.getRange(1, 1).getValue() || "").trim().toLowerCase();
-      var hasNoCol = firstHdr === "no";
-      var dateIdx = hasNoCol ? 1 : 0;
-      var pagiIdx = hasNoCol ? 3 : 2;
-      var siangIdx = hasNoCol ? 4 : 3;
-      var notesIdx = hasNoCol ? 6 : 6;
-      var idPagiIdx = hasNoCol ? 7 : 4;
-      var idSiangIdx = hasNoCol ? 8 : 5;
+      var hasNoCol = firstHdr === "no" || firstHdr.indexOf("jadwal") > -1;
+      var startRowIdx = 0;
+      // Jika ada header banner 3 baris
+      for (var hi = 0; hi < Math.min(dutyVals.length, 4); hi++) {
+        var cellVal0 = String(dutyVals[hi][0] || "").trim().toLowerCase();
+        if (cellVal0 === "1" || cellVal0 === 1) {
+          startRowIdx = hi;
+          break;
+        }
+      }
+      var dateIdx = 1;
+      var pagiIdx = 3;
+      var siangIdx = 4;
+      var notesIdx = 6;
+      var idPagiIdx = 7;
+      var idSiangIdx = 8;
 
-      for (var dy = 0; dy < dutyVals.length; dy++) {
+      for (var dy = startRowIdx; dy < dutyVals.length; dy++) {
         var dRow = dutyVals[dy];
         var dyDate = formatCellDate(dRow[dateIdx]);
 
-        if (dyDate) {
+        if (dyDate && dyDate.indexOf("-") > -1) {
           doctorDuties.push({
             date: dyDate,
             pagiDoctorName: String(dRow[pagiIdx] || "-").trim(),

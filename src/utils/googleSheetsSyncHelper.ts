@@ -7,6 +7,7 @@ import {
   Nurse, 
   NurseRole,
   Machine, 
+  MachineStatus,
   ShiftAssignment, 
   ShiftType, 
   AppSettings,
@@ -17,7 +18,13 @@ import {
   SpecialTaskCategory,
   SPECIAL_TASK_DEFINITIONS
 } from '../types';
-import { GoogleSheetsService, PartialSyncTargets, DEFAULT_PARTIAL_SYNC_TARGETS } from '../domain/GoogleSheetsService';
+import { 
+  GoogleSheetsService, 
+  PartialSyncTargets, 
+  DEFAULT_PARTIAL_SYNC_TARGETS,
+  getMachineDenahSortRank,
+  getSpecialTaskCategoryRank
+} from '../domain/GoogleSheetsService';
 export type { PartialSyncTargets };
 export { DEFAULT_PARTIAL_SYNC_TARGETS };
 import { ScheduleImportService } from '../domain/ScheduleImportService';
@@ -184,21 +191,23 @@ export function prepareSyncPayload(
   monthPrefix: string,
   specialTasks: SpecialTask[] = []
 ): SyncPayloadData {
-  const domainMachines: Machine[] = (machines || []).map((m, idx) => ({
-    id: isNaN(Number(m.id)) ? idx + 1 : Number(m.id),
-    code: m.code,
-    name: `Mesin HD ${m.code}`,
-    brandModel: (m as any).brandModel || m.model || 'Nipro / Fresenius',
-    category: ((m as any).category || 'REGULER') as any,
-    status: (m.status === 'siap' || m.status === 'dipakai' || m.status === 'AKTIF')
-      ? 'AKTIF'
-      : (m.status === 'maintenance' || m.status === 'MAINTENANCE')
-      ? 'MAINTENANCE'
-      : 'RUSAK',
-    bay: m.bay || m.zone || 'Bay A',
-    operationalShift: (m as any).operationalShift || 'ALL',
-    notes: m.notes,
-  }));
+  const domainMachines: Machine[] = (machines || [])
+    .map((m, idx) => ({
+      id: isNaN(Number(m.id)) ? idx + 1 : Number(m.id),
+      code: m.code,
+      name: `Mesin HD ${m.code}`,
+      brandModel: (m as any).brandModel || m.model || 'Nipro / Fresenius',
+      category: ((m as any).category || 'REGULER') as any,
+      status: ((m.status === 'siap' || m.status === 'dipakai' || m.status === 'AKTIF')
+        ? 'AKTIF'
+        : (m.status === 'maintenance' || m.status === 'MAINTENANCE')
+        ? 'MAINTENANCE'
+        : 'RUSAK') as MachineStatus,
+      bay: m.bay || m.zone || 'Bay A',
+      operationalShift: (m as any).operationalShift || 'ALL',
+      notes: m.notes,
+    }))
+    .sort((a, b) => getMachineDenahSortRank(a.code, a.bay) - getMachineDenahSortRank(b.code, b.bay));
 
   // 1. Separate Nurses (strictly Kepala Ruang, PJ Shift, Perawat Pelaksana - NO ADMIN, NO DOKTER)
   // Sorted strictly by sortNursesByShiftScheduleOrder (matching Halaman Jadwal Shif matrix)
@@ -611,6 +620,15 @@ export async function pushToGoogleSheets(
         completedAt: t.completedAt || '',
         completionNotes: t.completionNotes || '',
       };
+    }).sort((a, b) => {
+      const dateComp = String(a.date || '').localeCompare(String(b.date || ''));
+      if (dateComp !== 0) return dateComp;
+      const shiftComp = (a.shift === 'siang' ? 2 : 1) - (b.shift === 'siang' ? 2 : 1);
+      if (shiftComp !== 0) return shiftComp;
+      const rankA = getSpecialTaskCategoryRank(a.categoryName || a.category || a.title);
+      const rankB = getSpecialTaskCategoryRank(b.categoryName || b.category || b.title);
+      if (rankA !== rankB) return rankA - rankB;
+      return String(a.nurseName || '').localeCompare(String(b.nurseName || ''));
     });
 
     const result = await GoogleSheetsService.syncAllToGoogleSheets(

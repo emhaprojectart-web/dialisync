@@ -959,7 +959,10 @@ export class ScheduleImportService {
         const mAbbrEng = englishAbbrs[month - 1];
 
         const candidateTabNames = [
+          `Matrik Jadwal Perawat - ${mNameIndo} ${year}`,
+          `Matrik Jadwal Perawat`,
           `Matriks HD - ${mNameIndo} ${year}`,
+          `Matriks Jadwal HD`,
           `Jadwal HD ${mAbbrIndo} ${year}`,
           `Jadwal HD ${mNameIndo} ${year}`,
           `${mNameIndo} ${year}`,

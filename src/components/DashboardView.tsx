@@ -18,6 +18,7 @@ import {
   getTodayDateString
 } from '../utils/scheduler';
 import { WhatsAppShareModal } from './WhatsAppShareModal';
+import { EmployeeWhatsAppModal } from './EmployeeWhatsAppModal';
 import { isInvalidNurseAccount } from '../utils/storage';
 import { 
   Calendar, 
@@ -33,7 +34,8 @@ import {
   Stethoscope,
   Phone,
   Clock,
-  UserCheck
+  UserCheck,
+  Palmtree
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -71,6 +73,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Operational Date Selector (defaults to today's active date)
   const [selectedDate, setSelectedDate] = useState<string>(() => activeDate || getTodayDateString());
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [selectedEmployeeForWA, setSelectedEmployeeForWA] = useState<{
+    employee: UserAccount;
+    shift?: ShiftType;
+  } | null>(null);
 
   React.useEffect(() => {
     if (activeDate && activeDate !== selectedDate) {
@@ -346,6 +352,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     selectedDate,
     'siang'
   );
+
+  // Perawat / Staf yang libur/off pada tanggal yang dipilih
+  const offNurses = clinicalStaff.filter((n) => {
+    if (isSunday) return true;
+    const isWorkingPagi = rawPagiNurses.some((p) => p.id === n.id);
+    const isWorkingSiang = rawSiangNurses.some((s) => s.id === n.id);
+    if (isWorkingPagi || isWorkingSiang) return false;
+    const eff = getEffectiveShiftForEmployee(n, selectedDate, schedules, employees);
+    return eff === 'libur' || eff === 'cuti' || eff === 'izin' || eff === 'sakit' || !eff;
+  });
 
   // Machine calculations per shift:
   // Status mesin aktif pada dashboard HD mengikuti mesin yang aktif pada pembagian mesin (terplot ke perawat & tidak berstatus OFF)
@@ -704,7 +720,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {doctorPagi?.specialization || 'Dokter Penanggung Jawab Pelayanan HD (DPJP)'}
                       </div>
                       {doctorPagi && (
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           {doctorPagi.nip && (
                             <span className="text-[10px] text-slate-500 font-mono">
                               NIP: {doctorPagi.nip}
@@ -721,6 +737,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                               <span>{doctorPagi.phone}</span>
                             </a>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEmployeeForWA({ employee: doctorPagi, shift: 'pagi' })}
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-lg text-[11px] transition shadow-2xs cursor-pointer active:scale-95"
+                            title={`Kirim WA jadwal tugas jaga HD ke ${doctorPagi.name}`}
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            <span>Kirim WA Jadwal</span>
+                          </button>
                         </div>
                       )}
                     </div>
@@ -784,7 +809,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {doctorSiang?.specialization || 'Dokter Jaga Hemodialisa (Siang)'}
                       </div>
                       {doctorSiang && (
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           {doctorSiang.nip && (
                             <span className="text-[10px] text-slate-500 font-mono">
                               NIP: {doctorSiang.nip}
@@ -801,6 +826,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                               <span>{doctorSiang.phone}</span>
                             </a>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEmployeeForWA({ employee: doctorSiang, shift: 'siang' })}
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-extrabold rounded-lg text-[11px] transition shadow-2xs cursor-pointer active:scale-95"
+                            title={`Kirim WA jadwal tugas jaga HD ke ${doctorSiang.name}`}
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            <span>Kirim WA Jadwal</span>
+                          </button>
                         </div>
                       )}
                     </div>
@@ -878,8 +912,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-[11px] uppercase tracking-wider">
                     <th className="py-2.5 px-3 w-10 text-center">No</th>
                     <th className="py-2.5 px-3 min-w-[130px]">Nama Perawat</th>
-                    <th className="py-2.5 px-3 min-w-[160px]">Rangkuman Tugas Khusus</th>
+                    <th className="py-2.5 px-3 min-w-[150px]">Rangkuman Tugas Khusus</th>
                     <th className="py-2.5 px-3 min-w-[130px]">Alokasi Mesin</th>
+                    <th className="py-2.5 px-3 w-28 text-center">Kirim WA</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -908,6 +943,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <td className="py-2.5 px-3">
                         {renderMachineAllocation(kepalaRuang.id, 'pagi')}
                       </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEmployeeForWA({ employee: kepalaRuang, shift: 'pagi' })}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 bg-teal-100 hover:bg-teal-200 text-teal-900 border border-teal-300 rounded-lg text-[11px] font-bold transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                          title={`Kirim WA pengingat supervisi ke ${kepalaRuang.name}`}
+                        >
+                          <MessageCircle className="w-3 h-3 text-teal-700" />
+                          <span>Kirim WA</span>
+                        </button>
+                      </td>
                     </tr>
                   )}
 
@@ -931,11 +977,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <td className="py-2.5 px-3">
                           {renderMachineAllocation(nurse.id, 'pagi')}
                         </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEmployeeForWA({ employee: nurse, shift: 'pagi' })}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-bold transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                            title={`Kirim WA pengingat shif & mesin ke ${nurse.name}`}
+                          >
+                            <MessageCircle className="w-3 h-3 text-emerald-700" />
+                            <span>Kirim WA</span>
+                          </button>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-slate-400">
+                      <td colSpan={5} className="py-8 text-center text-slate-400">
                         <p className="text-xs font-semibold text-slate-600">
                           Tidak ada perawat pelaksana yang bertugas di Shif Pagi.
                         </p>
@@ -1018,8 +1075,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-[11px] uppercase tracking-wider">
                     <th className="py-2.5 px-3 w-10 text-center">No</th>
                     <th className="py-2.5 px-3 min-w-[130px]">Nama Perawat</th>
-                    <th className="py-2.5 px-3 min-w-[160px]">Rangkuman Tugas Khusus</th>
+                    <th className="py-2.5 px-3 min-w-[150px]">Rangkuman Tugas Khusus</th>
                     <th className="py-2.5 px-3 min-w-[130px]">Alokasi Mesin</th>
+                    <th className="py-2.5 px-3 w-28 text-center">Kirim WA</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1042,11 +1100,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <td className="py-2.5 px-3">
                           {renderMachineAllocation(nurse.id, 'siang')}
                         </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEmployeeForWA({ employee: nurse, shift: 'siang' })}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-pink-100 hover:bg-pink-200 text-pink-900 border border-pink-300 rounded-lg text-[11px] font-bold transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                            title={`Kirim WA pengingat shif & mesin ke ${nurse.name}`}
+                          >
+                            <MessageCircle className="w-3 h-3 text-pink-700" />
+                            <span>Kirim WA</span>
+                          </button>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-slate-400">
+                      <td colSpan={5} className="py-8 text-center text-slate-400">
                         <p className="text-xs font-semibold text-slate-600">
                           Tidak ada perawat pelaksana yang bertugas di Shif Siang.
                         </p>
@@ -1087,6 +1156,116 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      {/* SECTION PERAWAT / STAF LIBUR HARI INI */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-gradient-to-r from-amber-700 via-amber-800 to-slate-800 p-3.5 sm:p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 rounded-xl bg-white/15 text-white backdrop-blur-xs">
+              <Palmtree className="w-5 h-5 text-amber-300" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="font-extrabold text-base tracking-tight">
+                  Staf Libur / Lepas Jaga ({offNurses.length} Karyawan)
+                </h3>
+                <span className="text-[11px] px-2 py-0.5 rounded-md bg-white/20 font-bold text-amber-200">
+                  {isSunday ? 'Libur Rutin Minggu' : 'Lepas Jaga'}
+                </span>
+              </div>
+              <p className="text-xs text-amber-100/90 mt-0.5">
+                {isSunday 
+                  ? 'Unit Hemodialisa tutup rutin setiap hari Minggu. Seluruh staf libur dinas rutin (Kecuali perawat on-call / CITO).' 
+                  : 'Daftar perawat pelaksana yang sedang lepas dinas, libur, atau cuti pada tanggal ini.'}
+              </p>
+            </div>
+          </div>
+          <span className="text-xs px-2.5 py-1 rounded-lg bg-amber-950/40 text-amber-200 font-semibold border border-amber-500/30 self-start sm:self-auto">
+            {formattedDateLong}
+          </span>
+        </div>
+
+        <div className="p-4">
+          {offNurses.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {offNurses.map((staff) => {
+                const eff = getEffectiveShiftForEmployee(staff, selectedDate, schedules, employees);
+                const tasks = specialTasks.filter((t) => t.date === selectedDate && (t.employeeId === staff.id || t.assignedToId === staff.id));
+                const taskNames = tasks.map((t) => SPECIAL_TASK_DEFINITIONS[t.category]?.name || t.category);
+                const isCito = tasks.some((t) => t.category === 'cito') || taskNames.some((t) => t.toLowerCase().includes('cito'));
+
+                return (
+                  <div 
+                    key={staff.id} 
+                    className={`p-3 rounded-xl border flex flex-col justify-between space-y-2.5 transition ${
+                      isCito 
+                        ? 'bg-rose-50/70 border-rose-300 hover:border-rose-400 shadow-2xs' 
+                        : 'bg-slate-50/80 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="font-extrabold text-slate-900 text-sm">
+                          {getNurseNickname(staff)}
+                        </h4>
+                        <span className="text-[10px] text-slate-500 font-semibold block">
+                          {staff.role === 'kepala_ruangan' ? 'Kepala Ruangan' : staff.role === 'pj_shift' ? 'PJ Shif' : 'Perawat Pelaksana'}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        eff === 'cuti' 
+                          ? 'bg-purple-100 text-purple-800 border border-purple-300' 
+                          : 'bg-amber-100 text-amber-800 border border-amber-300'
+                      }`}>
+                        {eff === 'cuti' ? 'CUTI' : 'LIBUR'}
+                      </span>
+                    </div>
+
+                    {/* Special task badge if any */}
+                    {taskNames.length > 0 && (
+                      <div className="flex items-center space-x-1 flex-wrap gap-1">
+                        <span className="text-[10px] font-bold text-slate-600">Tugas:</span>
+                        {taskNames.map((tn, i) => (
+                          <span 
+                            key={i} 
+                            className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                              isCito 
+                                ? 'bg-rose-600 text-white shadow-2xs animate-pulse' 
+                                : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                            }`}
+                          >
+                            🏷️ {tn}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Send WA Button */}
+                    <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {staff.phone ? staff.phone : 'Tanpa nomor WA'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEmployeeForWA({ employee: staff, shift: (eff as ShiftType) || 'libur' })}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-lg text-[11px] font-bold transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                        title={`Kirim pengingat libur / tugas khusus via WA ke ${staff.name}`}
+                      >
+                        <MessageCircle className="w-3 h-3 text-amber-700" />
+                        <span>Kirim WA Libur</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 italic text-center py-4">
+              Seluruh staf aktif bertugas dinas pada tanggal ini.
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* WhatsApp Share Modal */}
       {isWhatsAppModalOpen && (
         <WhatsAppShareModal
@@ -1101,6 +1280,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           onUpdateEmployees={onUpdateEmployees}
           settings={settings}
           onUpdateSettings={onUpdateSettings}
+        />
+      )}
+
+      {/* Individual Employee WhatsApp Modal */}
+      {selectedEmployeeForWA && (
+        <EmployeeWhatsAppModal
+          isOpen={Boolean(selectedEmployeeForWA)}
+          onClose={() => setSelectedEmployeeForWA(null)}
+          employee={selectedEmployeeForWA.employee}
+          selectedDate={selectedDate}
+          initialShift={selectedEmployeeForWA.shift}
+          employees={employees}
+          schedules={schedules}
+          machines={machines}
+          machineAssignments={machineAssignments}
+          specialTasks={specialTasks}
+          onUpdateEmployees={onUpdateEmployees}
         />
       )}
     </div>

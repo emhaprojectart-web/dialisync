@@ -4,7 +4,9 @@ import {
   HDMachine, 
   MachineAssignment, 
   SpecialTask,
-  SpecialTaskCategory
+  SpecialTaskCategory,
+  ShiftType,
+  SPECIAL_TASK_DEFINITIONS
 } from '../types';
 import { 
   getEffectiveShiftForEmployee, 
@@ -545,5 +547,458 @@ export function safeOpenWhatsApp(
   }
 
   return { opened, url };
+}
+
+/**
+ * Format date in Indonesian format matching hospital standards:
+ * e.g. "Senin, 7 September 2026", "Rabu, 2 September 2026", "Minggu, 6 September 2026"
+ */
+export function formatIndonesianDateWithDay(dateStr: string): string {
+  if (!dateStr) return '';
+  const [yearStr, monthStr, dayStr] = dateStr.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10) - 1;
+  const day = parseInt(dayStr, 10);
+  const dateObj = new Date(year, month, day);
+  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const months = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  const dayName = days[dateObj.getDay()] || 'Hari';
+  const monthName = months[month] || '';
+  return `${dayName}, ${day} ${monthName} ${year}`;
+}
+
+/**
+ * Helper to normalize and format machine name
+ * e.g. "C01" -> "Mesin C01", "Mesin C01" -> "Mesin C01", "ISO 01" -> "Mesin ISO 01"
+ */
+export function formatSingleMachineName(rawCode: string): string {
+  if (!rawCode) return '';
+  const clean = rawCode.trim();
+  if (clean.toLowerCase().startsWith('mesin')) {
+    return clean;
+  }
+  return `Mesin ${clean}`;
+}
+
+/**
+ * 1. FORMAT PESAN WHATSAPP UNTUK DOKTER JAGA HEMODIALISIS:
+ * 
+ * Yth. (nama lengkap dokter yang bertugas shif siang)
+ * Salam hormat Dokter. Menginformasikan jadwal tugas jaga di Unit Hemodialisis:
+ * 
+ * 🏥 RS Happy Land Medical Centre 
+ * 📅 Hari/Tanggal: *Senin, 7 September 2026*
+ * ⏰ Sif Jaga: *SHIF SIANG*
+ * 👑 PJ Sif : (Nama Perawat yang mendapat tugas khusus PJ shif siang)
+ * 👤 Jumlah pasien : 24 pasien
+ * 
+ * Terima kasih atas kesediaan dan bimbingan Dokter kepada tim perawat dialisis. Semangat bertugas! 🙏🩺
+ * ━━━━━━━━━━━━━━━━━━━━━━
+ * Dialisync - RS Happy land Medical Centre Yogyakarta
+ */
+export interface DoctorWhatsAppOptions {
+  doctor: UserAccount;
+  dateStr: string;
+  shift: 'pagi' | 'siang' | 'pagi_siang';
+  pjShiftNurseName?: string;
+  patientCount?: number;
+}
+
+export function generateDoctorIndividualWhatsAppMessage(options: DoctorWhatsAppOptions): string {
+  const { doctor, dateStr, shift, pjShiftNurseName, patientCount } = options;
+  const formattedDate = formatIndonesianDateWithDay(dateStr);
+
+  let shiftLabel = 'SHIF SIANG';
+  if (shift === 'pagi') {
+    shiftLabel = 'SHIF PAGI';
+  } else if (shift === 'pagi_siang') {
+    shiftLabel = 'SHIF PAGI & SIANG';
+  }
+
+  const pjName = pjShiftNurseName?.trim() ? pjShiftNurseName.trim() : '-';
+  const count = typeof patientCount === 'number' && patientCount >= 0 ? patientCount : 24;
+
+  const lines = [
+    `Yth. ${doctor.name}`,
+    'Salam hormat Dokter. Menginformasikan jadwal tugas jaga di Unit Hemodialisis:',
+    '',
+    '🏥 RS Happy Land Medical Centre ',
+    `📅 Hari/Tanggal: *${formattedDate}*`,
+    `⏰ Sif Jaga: *${shiftLabel}*`,
+    `👑 PJ Sif : ${pjName}`,
+    `👤 Jumlah pasien : ${count} pasien`,
+    '',
+    'Terima kasih atas kesediaan dan bimbingan Dokter kepada tim perawat dialisis. Semangat bertugas! 🙏🩺',
+    '━━━━━━━━━━━━━━━━━━━━━━',
+    'Dialisync - RS Happy land Medical Centre Yogyakarta ',
+  ];
+
+  return lines.join('\n');
+}
+
+/**
+ * 2. FORMAT PESAN WHATSAPP UNTUK PERAWAT BERDINAS:
+ * 
+ * 🏥 *RS Happy Land Medical Centre*
+ * ━━━━━━━━━━━━━━━━━━━━━━
+ * 📋 *JADWAL DINAS & ALOKASI MESIN HD*
+ * 
+ * 👤 *Nama:* M NOR KHOIRUDIN
+ * 📅 *Tanggal:* Rabu, 2 September 2026
+ * ⏰ *Sif:* *🌇 SIF SIANG (12.00 - 19.00 WIB)*
+ * 
+ * 📟 *ALOKASI MESIN DIKELOLA (3 Mesin):*
+ * ▶ *Mesin C01* 
+ * ▶ *Mesin C02* 
+ * ▶ *Mesin C03* 
+ * 
+ * 📝 *Tugas Khusus:*
+ * • PJ Shif
+ * ━━━━━━━━━━━━━━━━━━━━━━
+ * Dialisync - RS Happy land Medical Centre Yogyakarta
+ */
+export interface NurseWhatsAppOptions {
+  nurse: UserAccount;
+  dateStr: string;
+  shift: ShiftType;
+  machineCodes: string[];
+  specialTasks: string[];
+}
+
+export function generateNurseIndividualWhatsAppMessage(options: NurseWhatsAppOptions): string {
+  const { nurse, dateStr, shift, machineCodes = [], specialTasks = [] } = options;
+  const formattedDate = formatIndonesianDateWithDay(dateStr);
+
+  const cleanShift = String(shift || 'pagi').toLowerCase();
+  let shiftFormatted = '*🌇 SIF SIANG (12.00 - 19.00 WIB)*';
+  if (cleanShift === 'pagi') {
+    shiftFormatted = '*🌅 SIF PAGI (07.00 - 14.00 WIB)*';
+  } else if (cleanShift === 'malam') {
+    shiftFormatted = '*🌙 SIF MALAM (21.00 - 07.00 WIB)*';
+  } else if (cleanShift === 'middle') {
+    shiftFormatted = '*☀️ SIF MIDDLE (10.00 - 17.00 WIB)*';
+  }
+
+  // Format machine lines
+  const uniqueNormalizedCodes = Array.from(
+    new Set(machineCodes.map((c) => normalizeMachineCode(c)))
+  ).sort((a, b) => getMachineSortOrder(a) - getMachineSortOrder(b));
+
+  const count = uniqueNormalizedCodes.length;
+  let machineSectionLines: string[] = [];
+
+  if (count > 0) {
+    machineSectionLines.push(`📟 *ALOKASI MESIN DIKELOLA (${count} Mesin):*`);
+    uniqueNormalizedCodes.forEach((code) => {
+      const formatted = formatSingleMachineName(code);
+      machineSectionLines.push(`▶ *${formatted}*`);
+    });
+  } else {
+    if (nurse.role === 'kepala_ruangan') {
+      machineSectionLines.push('📟 *ALOKASI MESIN DIKELOLA:*');
+      machineSectionLines.push('(Supervisi Ruang Dialisis - Tanpa Pasien Kelolaan Langsung)');
+    } else {
+      machineSectionLines.push('📟 *ALOKASI MESIN DIKELOLA (0 Mesin):*');
+      machineSectionLines.push('- Belum ada alokasi mesin');
+    }
+  }
+
+  // Format tasks list
+  const cleanTasks = specialTasks.filter(Boolean);
+  let taskSectionLines: string[] = ['📝 *Tugas Khusus:*'];
+  if (cleanTasks.length > 0) {
+    cleanTasks.forEach((t) => {
+      taskSectionLines.push(`• ${t}`);
+    });
+  } else {
+    taskSectionLines.push('• -');
+  }
+
+  const lines = [
+    '🏥 *RS Happy Land Medical Centre*',
+    '━━━━━━━━━━━━━━━━━━━━━━',
+    '📋 *JADWAL DINAS & ALOKASI MESIN HD*',
+    '',
+    `👤 *Nama:* ${nurse.name.toUpperCase()}`,
+    `📅 *Tanggal:* ${formattedDate}`,
+    `⏰ *Sif:* ${shiftFormatted}`,
+    '',
+    ...machineSectionLines,
+    '',
+    ...taskSectionLines,
+    '━━━━━━━━━━━━━━━━━━━━━━',
+    'Dialisync - RS Happy land Medical Centre Yogyakarta',
+  ];
+
+  return lines.join('\n');
+}
+
+/**
+ * 3. FORMAT PESAN WHATSAPP KARYAWAN SAAT LIBUR / OFF:
+ * 
+ * 🏥 RS Happy Land Medical Centre
+ * 📍 Ruang Dialisis Gedung Timur Lt.3
+ * ━━━━━━━━━━━━━━━━━━━━━━
+ * 📋 JADWAL DINAS & ALOKASI MESIN HD
+ * 
+ * 👤 Nama: M NOR KHOIRUDIN
+ * 📅 Tanggal: Minggu, 6 September 2026
+ * ⏰ Sif: 🌴 HARI LIBUR / OFF
+ * 🏷️ Tugas Khusus : *PERAWAT CITO*
+ *  
+ * 
+ * Selamat beristirahat dan mengisi kembali energi. Terima kasih atas dedikasi Anda! 🙏✨
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━
+ * Dialisync - RS Happy land Medical Centre Yogyakarta
+ */
+export interface OffEmployeeWhatsAppOptions {
+  employee: UserAccount;
+  dateStr: string;
+  shiftType?: ShiftType;
+  specialTaskName?: string;
+}
+
+export function generateOffEmployeeWhatsAppMessage(options: OffEmployeeWhatsAppOptions): string {
+  const { employee, dateStr, shiftType = 'libur', specialTaskName } = options;
+  const formattedDate = formatIndonesianDateWithDay(dateStr);
+
+  const cleanShift = String(shiftType || 'libur').toLowerCase();
+  let sifText = '🌴 HARI LIBUR / OFF';
+  if (cleanShift === 'cuti') {
+    sifText = '🌴 CUTI TAHUNAN';
+  } else if (cleanShift === 'izin') {
+    sifText = '🌴 IZIN RESMI';
+  } else if (cleanShift === 'sakit') {
+    sifText = '🌴 SAKIT / ISTIRAHAT MEDIS';
+  }
+
+  let taskText = '-';
+  if (specialTaskName && specialTaskName.trim()) {
+    taskText = `*${specialTaskName.trim().toUpperCase()}*`;
+  }
+
+  const lines = [
+    '🏥 RS Happy Land Medical Centre',
+    '📍 Ruang Dialisis Gedung Timur Lt.3',
+    '━━━━━━━━━━━━━━━━━━━━━━',
+    '📋 JADWAL DINAS & ALOKASI MESIN HD',
+    '',
+    `👤 Nama: ${employee.name.toUpperCase()}`,
+    `📅 Tanggal: ${formattedDate}`,
+    `⏰ Sif: ${sifText}`,
+    `🏷️ Tugas Khusus : ${taskText}`,
+    ' ',
+    '',
+    'Selamat beristirahat dan mengisi kembali energi. Terima kasih atas dedikasi Anda! 🙏✨',
+    '',
+    '━━━━━━━━━━━━━━━━━━━━━━',
+    'Dialisync - RS Happy land Medical Centre Yogyakarta',
+  ];
+
+  return lines.join('\n');
+}
+
+/**
+ * Unified individual reminder generator that auto-detects employee role,
+ * shift, machines, and special tasks to output the exact corresponding format.
+ */
+export interface PersonalEmployeeWhatsAppParams {
+  employee: UserAccount;
+  dateStr: string;
+  employees: UserAccount[];
+  schedules: ShiftSchedule[];
+  machines: HDMachine[];
+  machineAssignments: MachineAssignment[];
+  specialTasks: SpecialTask[];
+  shiftOverride?: ShiftType;
+  patientCountOverride?: number;
+  pjShiftNurseNameOverride?: string;
+  specialTaskOverride?: string;
+}
+
+export function generatePersonalEmployeeWhatsApp(params: PersonalEmployeeWhatsAppParams): {
+  message: string;
+  phone: string;
+  type: 'dokter' | 'perawat' | 'libur';
+  shift: ShiftType;
+  machineCodes: string[];
+  specialTasksList: string[];
+  pjShiftNurseName?: string;
+  patientCount?: number;
+} {
+  const {
+    employee,
+    dateStr,
+    employees,
+    schedules,
+    machines,
+    machineAssignments,
+    specialTasks,
+    shiftOverride,
+    patientCountOverride,
+    pjShiftNurseNameOverride,
+    specialTaskOverride,
+  } = params;
+
+  const phone = employee.phone || '';
+
+  // 1. DOKTER
+  if (employee.role === 'dokter') {
+    // Determine doctor shift on this date
+    let docShift: 'pagi' | 'siang' | 'pagi_siang' = 'siang';
+    if (shiftOverride === 'pagi' || shiftOverride === 'siang' || shiftOverride === 'pagi_siang') {
+      docShift = shiftOverride;
+    } else {
+      const sch = schedules.find((s) => s.employeeId === employee.id && s.date === dateStr);
+      if (sch?.shift === 'pagi') docShift = 'pagi';
+      else if (sch?.shift === 'siang') docShift = 'siang';
+      else if (sch?.shift === 'pagi_siang') docShift = 'pagi_siang';
+      else docShift = 'siang'; // default
+    }
+
+    // Determine PJ Shift Nurse for this shift
+    let pjNurse = pjShiftNurseNameOverride;
+    if (!pjNurse) {
+      const targetPjShift = docShift === 'pagi' ? 'pagi' : 'siang';
+      const pjTask = specialTasks.find(
+        (t) => t.date === dateStr && t.shift === targetPjShift && t.category === 'pj_shift'
+      );
+      if (pjTask) {
+        const pjEmpId = pjTask.employeeId || pjTask.assignedToId;
+        const pjEmp = employees.find((e) => e.id === pjEmpId);
+        if (pjEmp) pjNurse = pjEmp.name;
+      }
+      if (!pjNurse) {
+        // Fallback to active clinical nurse with role pj_shift
+        const effPj = employees.find((e) => {
+          if (e.role !== 'pj_shift' || e.status !== 'aktif') return false;
+          const eff = getEffectiveShiftForEmployee(e, dateStr, schedules, employees);
+          return eff === targetPjShift;
+        });
+        if (effPj) pjNurse = effPj.name;
+      }
+    }
+
+    // Determine Patient Count: Jumlah Mesin Aktif pada shif tersebut
+    let pCount = patientCountOverride;
+    if (typeof pCount !== 'number') {
+      const targetCountShift = docShift === 'pagi' ? 'pagi' : 'siang';
+      // Hitung mesin aktif yang dialokasikan ke perawat pada shif tersebut
+      const assignedActive = machineAssignments.filter(
+        (a) => a.date === dateStr && a.shift === targetCountShift && !a.isOff && Boolean(a.nurseId)
+      );
+      if (assignedActive.length > 0) {
+        pCount = assignedActive.length;
+      } else {
+        // Jika belum diplot pada tanggal ini, hitung mesin yang berstatus operasional/siap untuk shif tersebut
+        const operationalForShift = machines.filter((m) => {
+          const isShiftMatch =
+            !m.operationalShift ||
+            m.operationalShift === 'ALL' ||
+            m.operationalShift === targetCountShift.toUpperCase();
+          const isOperational = m.status === 'AKTIF' || m.status === 'siap' || m.status === 'dipakai';
+          return isShiftMatch && isOperational;
+        });
+        pCount = operationalForShift.length > 0 ? operationalForShift.length : 24;
+      }
+    }
+
+    const message = generateDoctorIndividualWhatsAppMessage({
+      doctor: employee,
+      dateStr,
+      shift: docShift,
+      pjShiftNurseName: pjNurse,
+      patientCount: pCount,
+    });
+
+    return {
+      message,
+      phone,
+      type: 'dokter',
+      shift: docShift,
+      machineCodes: [],
+      specialTasksList: [],
+      pjShiftNurseName: pjNurse,
+      patientCount: pCount,
+    };
+  }
+
+  // 2. PERAWAT / PJ SHIFT / KEPALA RUANGAN
+  const effectiveShift = (shiftOverride ||
+    getEffectiveShiftForEmployee(employee, dateStr, schedules, employees)) as ShiftType;
+
+  const isOffDay =
+    effectiveShift === 'libur' ||
+    effectiveShift === 'cuti' ||
+    effectiveShift === 'izin' ||
+    effectiveShift === 'sakit' ||
+    effectiveShift === 'LIBUR' ||
+    effectiveShift === 'CUTI' ||
+    effectiveShift === 'SAKIT';
+
+  // Check special tasks for this employee on dateStr
+  const empSpecialTasks = specialTasks.filter(
+    (t) => t.date === dateStr && (t.employeeId === employee.id || t.assignedToId === employee.id)
+  );
+  const taskNames: string[] = empSpecialTasks
+    .map((t) => SPECIAL_TASK_DEFINITIONS[t.category]?.name || t.category)
+    .filter((t): t is string => Boolean(t));
+
+  if (isOffDay) {
+    // FORMAT 3: Karyawan Saat Libur
+    let chosenTask = specialTaskOverride;
+    if (!chosenTask && taskNames.length > 0) {
+      chosenTask = taskNames.join(', ');
+    }
+    const message = generateOffEmployeeWhatsAppMessage({
+      employee,
+      dateStr,
+      shiftType: effectiveShift,
+      specialTaskName: chosenTask,
+    });
+
+    return {
+      message,
+      phone,
+      type: 'libur',
+      shift: effectiveShift,
+      machineCodes: [],
+      specialTasksList: taskNames,
+    };
+  }
+
+  // FORMAT 2: Perawat Berdinas (Pagi / Siang)
+  const shiftKey = effectiveShift === 'siang' ? 'siang' : 'pagi';
+  const nurseMachineAssignments = machineAssignments.filter(
+    (a) => a.date === dateStr && a.shift === shiftKey && a.nurseId === employee.id && !a.isOff
+  );
+
+  const machineCodes: string[] = nurseMachineAssignments
+    .map((a) => {
+      const m = machines.find((mach) => mach.id === a.machineId);
+      return m ? (m.code || m.name) : a.machineId;
+    })
+    .filter((c): c is string => Boolean(c));
+
+  const message = generateNurseIndividualWhatsAppMessage({
+    nurse: employee,
+    dateStr,
+    shift: effectiveShift,
+    machineCodes,
+    specialTasks: taskNames,
+  });
+
+  return {
+    message,
+    phone,
+    type: 'perawat',
+    shift: effectiveShift,
+    machineCodes,
+    specialTasksList: taskNames,
+  };
 }
 

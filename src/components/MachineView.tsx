@@ -9,7 +9,8 @@ import {
   MachineZoneConfig,
   DEFAULT_ZONES,
   SpecialTask,
-  SPECIAL_TASK_DEFINITIONS
+  SPECIAL_TASK_DEFINITIONS,
+  ShiftType
 } from '../types';
 import { 
   autoAssignMachinesForShift, 
@@ -50,8 +51,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  MessageCircle,
 } from 'lucide-react';
 import { RoomFloorPlan } from './RoomFloorPlan';
+import { EmployeeWhatsAppModal } from './EmployeeWhatsAppModal';
 import { HOSPITAL_LAYOUT_40_MACHINES } from '../data/initialData';
 
 interface MachineViewProps {
@@ -277,6 +280,11 @@ export const MachineView: React.FC<MachineViewProps> = ({
     targetUF?: string;
     dialyzerType?: string;
     notes?: string;
+  } | null>(null);
+
+  const [selectedEmployeeForWA, setSelectedEmployeeForWA] = useState<{
+    employee: UserAccount;
+    shift?: ShiftType;
   } | null>(null);
 
   // Machine inventory modal
@@ -834,6 +842,84 @@ export const MachineView: React.FC<MachineViewProps> = ({
               </button>
             )}
           </div>
+
+          {/* Rangkuman Alokasi Mesin & Tombol Kirim WA Per Staf */}
+          {nursesOnDuty.length > 0 && (
+            <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-xs space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-100">
+                <div className="flex items-center space-x-2">
+                  <div className={`p-1.5 rounded-lg text-white ${selectedShift === 'pagi' ? 'bg-emerald-600' : 'bg-blue-600'}`}>
+                    <MessageCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                      Pengingat WhatsApp Perawat Dinas ({nursesOnDuty.length} Staf Shif {selectedShift === 'pagi' ? 'Pagi' : 'Siang'})
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Kirim rincian alokasi mesin dan tugas khusus langsung ke masing-masing perawat via WhatsApp.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                {nursesOnDuty.map((nurse) => {
+                  const assigned = machineAssignments.filter(
+                    (a) => a.date === selectedDate && a.shift === selectedShift && a.nurseId === nurse.id && !a.isOff
+                  );
+                  const assignedCodes = assigned.map((a) => {
+                    const m = machines.find((mach) => mach.id === a.machineId);
+                    return m ? (m.code || m.name) : a.machineId;
+                  });
+                  const task = specialTasksThisShift.find((t) => t.employeeId === nurse.id || t.assignedToId === nurse.id);
+                  const taskName = task ? (SPECIAL_TASK_DEFINITIONS[task.category]?.name || task.category) : null;
+
+                  return (
+                    <div
+                      key={nurse.id}
+                      className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-teal-300 hover:shadow-xs transition flex flex-col justify-between space-y-2 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-1.5">
+                          <span className="font-extrabold text-slate-900 truncate" title={nurse.name}>
+                            {nurse.name}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-900 shrink-0">
+                            {assigned.length} Mesin
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                          {assignedCodes.length > 0 ? assignedCodes.join(', ') : 'Belum diplot'}
+                        </div>
+                        {taskName && (
+                          <div className="mt-1">
+                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900">
+                              🏷️ {taskName}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-1.5 border-t border-slate-200/80 flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-slate-500 truncate max-w-[100px]">
+                          {nurse.phone ? nurse.phone : 'Tanpa nomor'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEmployeeForWA({ employee: nurse, shift: selectedShift })}
+                          className="inline-flex items-center space-x-1 px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[10px] font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                          title={`Kirim pengingat plot mesin ke ${nurse.name} via WA`}
+                        >
+                          <MessageCircle className="w-3 h-3 text-emerald-600" />
+                          <span>Kirim WA</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {plottingViewMode === 'floorplan' ? (
             <RoomFloorPlan
@@ -2348,6 +2434,22 @@ export const MachineView: React.FC<MachineViewProps> = ({
           )}
           <span>{toastMessage.text}</span>
         </div>
+      )}
+
+      {/* Individual Employee WhatsApp Modal */}
+      {selectedEmployeeForWA && (
+        <EmployeeWhatsAppModal
+          isOpen={Boolean(selectedEmployeeForWA)}
+          onClose={() => setSelectedEmployeeForWA(null)}
+          employee={selectedEmployeeForWA.employee}
+          selectedDate={selectedDate}
+          initialShift={selectedEmployeeForWA.shift}
+          employees={employees}
+          schedules={schedules}
+          machines={machines}
+          machineAssignments={machineAssignments}
+          specialTasks={specialTasks}
+        />
       )}
     </div>
   );
